@@ -18,7 +18,8 @@
     "express": "^5",
     "nayan-media-downloaders": "^0.1.8",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "yt-search": "^2.13.1"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

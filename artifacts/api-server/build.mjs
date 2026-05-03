@@ -30,6 +30,7 @@ async function buildAll() {
     external: [
       "*.node",
       "nayan-media-downloaders",
+      "yt-search",
       "sharp",
       "better-sqlite3",
       "sqlite3",

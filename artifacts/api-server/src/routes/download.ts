@@ -1,25 +1,21 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createRequire } from "module";
+import yts from "yt-search";
 
 const _require = createRequire(import.meta.url);
-const {
-  alldownV2,
-  tikdown,
-  ytdown,
-  twitterdown,
-  instagram,
-} = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
+const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
 
 const router: IRouter = Router();
 
-function detectPlatform(
-  url: string,
-): "youtube" | "tiktok" | "twitter" | "instagram" | "universal" {
-  if (/youtube\.com|youtu\.be/i.test(url)) return "youtube";
-  if (/tiktok\.com/i.test(url)) return "tiktok";
-  if (/twitter\.com|x\.com/i.test(url)) return "twitter";
-  if (/instagram\.com/i.test(url)) return "instagram";
-  return "universal";
+const YT_URL_RE = /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+
+function extractVideoId(input: string): string | null {
+  const m = input.match(YT_URL_RE);
+  return m ? m[1] : null;
+}
+
+function isUrl(input: string): boolean {
+  return /^https?:\/\//i.test(input);
 }
 
 router.get("/v1/q", async (req: Request, res: Response) => {
@@ -28,163 +24,92 @@ router.get("/v1/q", async (req: Request, res: Response) => {
   if (!query || !query.trim()) {
     res.status(400).json({
       success: false,
-      error: "Missing query. Usage: /api/v1/q?=(url)",
-      supported_platforms: [
-        "YouTube (youtube.com / youtu.be)",
-        "TikTok (tiktok.com)",
-        "Twitter / X (twitter.com / x.com)",
-        "Instagram (instagram.com)",
-        "Facebook",
-        "Pinterest",
-        "CapCut",
-        "Likee",
-        "Threads",
-        "Google Drive",
+      error: "Missing query.",
+      usage: "/api/v1/q?=(YouTube URL or song/video title)",
+      examples: [
+        "/api/v1/q?=lay me down sam smith",
+        "/api/v1/q?=https://youtu.be/dQw4w9WgXcQ",
+        "/api/v1/q?=https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       ],
     });
     return;
   }
 
-  const url = query.trim();
-  const platform = detectPlatform(url);
+  const input = query.trim();
 
   try {
-    // TikTok — rich metadata: views, plays, shares, comments, mp4 + mp3
-    if (platform === "tiktok") {
-      const result = await tikdown(url);
+    let videoId: string | null = null;
+    let youtubeUrl: string;
 
-      if (!result.status || !result.data) {
-        res.status(502).json({ success: false, error: "TikTok fetch failed", url });
+    // --- Step 1: Resolve to a YouTube video ID ---
+    if (isUrl(input)) {
+      videoId = extractVideoId(input);
+      if (!videoId) {
+        res.status(400).json({
+          success: false,
+          error: "Could not extract a YouTube video ID from this URL. Make sure it's a valid YouTube link.",
+          input,
+        });
         return;
       }
-
-      const d = result.data;
-      res.json({
-        success: true,
-        platform: "tiktok",
-        info: {
-          title: d.title ?? null,
-          author: d.author?.nickname ?? null,
-          username: d.author?.unique_id ?? null,
-          avatar: d.author?.avatar ?? null,
-          duration: d.duration ?? null,
-          views: d.view ?? null,
-          plays: d.play ?? null,
-          comments: d.comment ?? null,
-          shares: d.share ?? null,
-          downloads: d.download ?? null,
-        },
-        media: {
-          mp4: d.video ? { url: d.video } : null,
-          mp3: d.audio ? { url: d.audio } : null,
-        },
-      });
-      return;
-    }
-
-    // YouTube — video info + mp4/mp3 download links
-    if (platform === "youtube") {
-      const result = await ytdown(url);
-
-      if (!result.status || !result.data) {
-        res.status(502).json({ success: false, error: "YouTube fetch failed", url });
+      youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    } else {
+      // Title / keyword search — find the best matching video
+      const searchResult = await yts(input);
+      const first = searchResult.videos[0];
+      if (!first) {
+        res.status(404).json({ success: false, error: "No YouTube results found for this query.", query: input });
         return;
       }
-
-      const d = result.data;
-      res.json({
-        success: true,
-        platform: "youtube",
-        info: {
-          title: d.title ?? null,
-          thumbnail: d.thumbnail ?? null,
-          duration: d.duration ?? null,
-        },
-        media: {
-          mp4: (d.video ?? d.high) ? { url: d.video ?? d.high, quality: "HD" } : null,
-          mp3: (d.audio ?? d.low) ? { url: d.audio ?? d.low } : null,
-        },
-      });
-      return;
+      videoId = first.videoId;
+      youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     }
 
-    // Twitter / X — HD and SD mp4 links
-    if (platform === "twitter") {
-      const result = await twitterdown(url);
+    // --- Step 2: Fetch rich info + download links in parallel ---
+    const [infoResult, dlResult] = await Promise.allSettled([
+      yts({ videoId }),
+      ytdown(youtubeUrl),
+    ]);
 
-      if (!result.status || !result.data) {
-        res.status(502).json({ success: false, error: "Twitter fetch failed", url });
-        return;
-      }
+    const info = infoResult.status === "fulfilled" ? infoResult.value : null;
+    const dl   = dlResult.status === "fulfilled"   ? dlResult.value   : null;
 
-      const d = result.data;
-      res.json({
-        success: true,
-        platform: "twitter",
-        info: {},
-        media: {
-          mp4: d.HD ? { url: d.HD, quality: "HD" } : (d.SD ? { url: d.SD, quality: "SD" } : null),
-          mp3: null,
-          all: { hd: d.HD ?? null, sd: d.SD ?? null },
-        },
-      });
-      return;
-    }
+    // Resolve author name (yt-search returns string or object)
+    const authorName =
+      info && "author" in info
+        ? typeof info.author === "string"
+          ? info.author
+          : (info.author as { name?: string }).name ?? null
+        : null;
 
-    // Instagram — array of media items
-    if (platform === "instagram") {
-      const result = await instagram(url);
+    const dlData = dl?.status ? dl.data : null;
 
-      if (!result.status) {
-        res.status(502).json({ success: false, error: "Instagram fetch failed", url });
-        return;
-      }
-
-      const items = result.data ?? [];
-      res.json({
-        success: true,
-        platform: "instagram",
-        info: { count: items.length },
-        media: {
-          items: items.map((i) => ({ url: i.url ?? null, thumbnail: i.thumbnail ?? null })),
-          mp4: items.find((i) => i.url?.includes("mp4"))?.url ?? items[0]?.url ?? null,
-          mp3: null,
-        },
-      });
-      return;
-    }
-
-    // Universal — FB, Pinterest, CapCut, Likee, Threads, Google Drive, etc.
-    const result = await alldownV2(url);
-
-    if (!result.status || !result.data) {
-      res.status(502).json({ success: false, error: "Could not fetch media from this URL", url });
-      return;
-    }
-
-    const d = result.data;
     res.json({
       success: true,
-      platform: "universal",
+      video_id: videoId,
+      url: youtubeUrl,
       info: {
-        title: d.title ?? null,
-        thumbnail: d.thumbnail ?? null,
-        token_expires: d.token_info?.expires_at ?? null,
-        token_remaining: d.token_info?.remaining ?? null,
+        title:       info ? (info as { title?: string }).title ?? null       : dlData?.title ?? null,
+        author:      authorName,
+        thumbnail:   info ? (info as { thumbnail?: string }).thumbnail ?? null : null,
+        duration:    info ? (info as { duration?: { timestamp?: string } }).duration?.timestamp ?? null : null,
+        views:       info ? (info as { views?: number }).views ?? null       : null,
+        published:   info ? (info as { ago?: string }).ago ?? null           : null,
+        description: info ? (info as { description?: string }).description ?? null : null,
       },
       media: {
-        mp4: d.download?.video
-          ? { url: d.download.video, stream: d.stream?.video ?? null }
+        mp4: dlData?.video ?? dlData?.high
+          ? { url: dlData.video ?? dlData.high, quality: "HD" }
           : null,
-        mp3: d.download?.audio
-          ? { url: d.download.audio, stream: d.stream?.audio ?? null }
+        mp3: dlData?.audio ?? dlData?.low
+          ? { url: dlData.audio ?? dlData.low }
           : null,
       },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    req.log.error({ err, url, platform }, "Download error");
-    res.status(500).json({ success: false, error: message, platform, url });
+    req.log.error({ err, input }, "YouTube download error");
+    res.status(500).json({ success: false, error: message, input });
   }
 });
 
