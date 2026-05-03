@@ -17,9 +17,11 @@ declare module "yt-search" {
     duration: VideoDuration;
     author: VideoAuthor | string;
     thumbnail: string;
+    image?: string;
     ago?: string;
     description?: string;
     likes?: number;
+    keywords?: string[];
   }
 
   export interface SearchResult {
