@@ -5,9 +5,20 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.0.5",
+    version: "1.0.6",
     date: "2026-05-04",
     tag: "current",
+    notes: [
+      "Fixed 'Read more' description overflow — long text now scrolls inside a bounded area so 'Read less' is always reachable",
+      "API v2 revamp: response now returns credit, version, ms and flat media.mp4 / media.mp3 URLs — no title, video_id or url fields",
+      "Guaranteed thumbnail fallback chain in v1: yts thumbnail → yts image → nayan thumbnail → constructed hqdefault URL",
+      "Version bumped to 1.0.6",
+    ],
+  },
+  {
+    version: "1.0.5",
+    date: "2026-05-04",
+    tag: "",
     notes: [
       "New /api/v2/q — fast endpoint: title + download links only, no extra metadata",
       "Fixed 'Show less' not scrolling back — now snaps card into view",
@@ -234,7 +245,9 @@ function buildHtml(version: string): string {
     .r-stat{font-size:.71rem;color:#AAAAAA;display:flex;align-items:center;gap:4px}
     .r-desc-wrap{font-size:.74rem;color:#AAAAAA;line-height:1.55;display:none}
     .r-desc-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;user-select:text;-webkit-user-select:text}
-    .r-desc-text.exp{-webkit-line-clamp:unset}
+    .r-desc-text.exp{-webkit-line-clamp:unset;display:block;max-height:200px;overflow-y:auto;padding-right:4px}
+    .r-desc-text.exp::-webkit-scrollbar{width:4px}
+    .r-desc-text.exp::-webkit-scrollbar-thumb{background:#3F3F3F;border-radius:2px}
     .r-more{background:none;border:none;color:#FF0000;font-size:.7rem;font-weight:700;cursor:pointer;padding:2px 0;margin-top:3px;display:block;transition:color .15s}
     .r-more:hover{color:#FF4444}
     .r-dl{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
@@ -426,7 +439,7 @@ function buildHtml(version: string): string {
       <div class="ep-body">
         <div class="ep-body-inner">
           <p class="ep-info">
-            Faster than v1 — skips full metadata and only fetches the video <strong>title</strong> + direct <code>MP4</code> &amp; <code>MP3</code> download links. Perfect for bots or scripts that only need the download URL quickly. Includes <code>creditTo</code>, <code>version</code>, and <code>ms</code> timing.
+            Faster than v1 — skips all metadata and only fetches direct <code>MP4</code> &amp; <code>MP3</code> download links. Perfect for bots or scripts that only need the download URL quickly. Response includes <code>credit</code>, <code>version</code>, and <code>ms</code> timing. No title, no extra fields.
           </p>
           <div class="ep-input-row">
             <input class="ep-input" id="q3" type="text" placeholder="e.g.  never gonna give you up  or  https://youtu.be/…" onkeydown="if(event.key==='Enter')fetchEp(3)"/>
@@ -453,8 +466,7 @@ function buildHtml(version: string): string {
               </button>
             </div>
             <div class="v2-card" id="v2card" style="display:none">
-              <div class="v2-label">Result</div>
-              <div class="v2-title" id="v2-title"></div>
+              <div class="v2-label">Download Links</div>
               <div class="v2-dl" id="v2-dl"></div>
             </div>
             <div class="json-actions">
@@ -798,22 +810,21 @@ async function fetchEp(n){
     }
 
     /* ── V2 quick card ── */
-    if(n===3&&typeof data==='object'&&data&&data.success){
+    if(n===3&&typeof data==='object'&&data&&data.credit){
       var media3=data.media||{};
-      document.getElementById('v2-title').textContent=data.title||data.video_id||'Unknown';
 
       var dlRow3=document.getElementById('v2-dl');
       dlRow3.innerHTML='';
       var hasLink=false;
-      if(media3.mp4&&media3.mp4.url){
+      if(media3.mp4&&typeof media3.mp4==='string'){
         var b4=document.createElement('a');
-        b4.href=media3.mp4.url;b4.target='_blank';b4.rel='noopener noreferrer';
+        b4.href=media3.mp4;b4.target='_blank';b4.rel='noopener noreferrer';
         b4.className='dl-btn dl-mp4';b4.innerHTML=dlIcon()+'Download MP4';
         dlRow3.appendChild(b4);hasLink=true;
       }
-      if(media3.mp3&&media3.mp3.url){
+      if(media3.mp3&&typeof media3.mp3==='string'){
         var b3=document.createElement('a');
-        b3.href=media3.mp3.url;b3.target='_blank';b3.rel='noopener noreferrer';
+        b3.href=media3.mp3;b3.target='_blank';b3.rel='noopener noreferrer';
         b3.className='dl-btn dl-mp3';b3.innerHTML=dlIcon()+'Download MP3';
         dlRow3.appendChild(b3);hasLink=true;
       }
