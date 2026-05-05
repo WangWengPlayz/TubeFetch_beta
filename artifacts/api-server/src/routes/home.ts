@@ -5,9 +5,23 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.0.8",
+    date: "2026-05-05",
+    tag: "current",
+    notes: [
+      "Global ApiCount — every response now includes the total request counter",
+      "Live stats bar in hero: total calls, version, cache TTL",
+      "New /api/v3/q — returns top 10 search results with full metadata",
+      "New /api/stats — monitor total API calls in real time",
+      "V1 response now includes category (Music, Gaming, Education, etc.)",
+      "FAQ section with 10 professional Q&As",
+      "Disabled browser zoom for consistent mobile UX",
+    ],
+  },
+  {
     version: "1.0.7",
     date: "2026-05-04",
-    tag: "current",
+    tag: "",
     notes: [
       "Full UI redesign — glassmorphism 2.0, particle VFX hero, 2026 web aesthetics",
       "Cinematic intro with scanlines, split-word reveal and glitch text effect",
@@ -33,7 +47,6 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     notes: [
       "New /api/v2/q — fast endpoint: title + download links only",
       "Fixed 'Show less' scroll snap",
-      "Disabled page text selection",
     ],
   },
   {
@@ -48,16 +61,6 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     ],
   },
   {
-    version: "1.0.3",
-    date: "2026-05-04",
-    tag: "",
-    notes: [
-      "Interactive expandable endpoint cards with inline tester",
-      "ms timing on every response",
-      "Bell notification panel for changelog",
-    ],
-  },
-  {
     version: "1.0.0",
     date: "2026-05-01",
     tag: "initial",
@@ -66,6 +69,49 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
       "MP4 HD + MP3 direct download links",
       "90-second in-memory cache, Replit/Render/Vercel ready",
     ],
+  },
+];
+
+const FAQS: { q: string; a: string }[] = [
+  {
+    q: "What is TubeFetch?",
+    a: "TubeFetch is a free, open REST API that lets developers search YouTube and retrieve direct download links for <code>MP4</code> (HD video) and <code>MP3</code> (audio). Pass any YouTube URL or a plain search query and get back structured JSON with metadata and media URLs — <strong>no API key required</strong>.",
+  },
+  {
+    q: "Do I need an API key or account?",
+    a: "No. TubeFetch is completely free with <strong>zero authentication</strong> required. Simply call the endpoints from any HTTP client — a browser, curl, Postman, or your own app — and get results instantly.",
+  },
+  {
+    q: "What is the difference between v1, v2, and v3?",
+    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — skips all metadata and returns only download links. <strong>v3</strong> returns a ranked list of up to 10 YouTube search results with full metadata but without download links.",
+  },
+  {
+    q: "How long are responses cached?",
+    a: "All successful responses are cached <strong>in-memory for 90 seconds</strong>. If the same query is made within that window, the cached result is returned instantly and the response will include <code>\"cached\": true</code>. The <code>ApiCount</code> counter increments on every request regardless of cache status.",
+  },
+  {
+    q: "Can I search by title instead of a URL?",
+    a: "Yes. All endpoints accept both a full YouTube URL (e.g. <code>https://youtu.be/dQw4w9WgXcQ</code>) and a plain-text search query (e.g. <code>never gonna give you up</code>). For v1 and v2, the top search result is used. For v3, up to 10 results are returned.",
+  },
+  {
+    q: "What formats are available?",
+    a: "TubeFetch provides a direct <strong>MP4</strong> link (HD quality where available) and a direct <strong>MP3</strong> link (audio only). Links are sourced in real-time and may expire after a period of time, so they should be consumed promptly after fetching.",
+  },
+  {
+    q: "What is ApiCount?",
+    a: "<code>ApiCount</code> is a global request counter that increments by 1 on every API call to TubeFetch (v1, v2, v3, uptime, and healthz). It reflects the <strong>total number of requests served</strong> since the server last started. View the live count at <code>/api/stats</code> or in the stats bar above.",
+  },
+  {
+    q: "What categories does TubeFetch detect?",
+    a: "TubeFetch automatically classifies content into: <strong>Music, Gaming, Education, News &amp; Politics, Comedy, Sports, Film &amp; Entertainment, Science &amp; Technology, Travel &amp; Vlogs, Food &amp; Cooking, Health &amp; Fitness, Beauty &amp; Fashion,</strong> and <strong>Entertainment</strong> (default). Classification is based on title, description, and keywords.",
+  },
+  {
+    q: "Is there a rate limit?",
+    a: "There is <strong>no enforced rate limit</strong>. However, please be respectful of the underlying services TubeFetch depends on. Excessive polling or abusive usage may result in temporary throttling from YouTube's infrastructure.",
+  },
+  {
+    q: "Is TubeFetch free for commercial use?",
+    a: "TubeFetch is free for personal and educational use. Commercial use is at your own discretion — please ensure compliance with <strong>YouTube's Terms of Service</strong> and applicable copyright laws. The developer (MJL) accepts no liability for any misuse. All content belongs to its respective owners.",
   },
 ];
 
@@ -84,11 +130,22 @@ function buildHtml(version: string): string {
     </div>`;
   }).join("");
 
+  const faqItems = FAQS.map((f, i) => `
+    <div class="faq-item" id="faq${i}">
+      <div class="faq-q" onclick="toggleFaq(${i})">
+        <span>${f.q}</span>
+        <span class="faq-icon">+</span>
+      </div>
+      <div class="faq-a">
+        <div class="faq-a-inner">${f.a}</div>
+      </div>
+    </div>`).join("");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
   <title>TubeFetch — MJL</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -111,29 +168,24 @@ function buildHtml(version: string): string {
       display:flex;align-items:center;justify-content:center;
       overflow:hidden;
     }
-    /* dot grid */
     #intro::before{
       content:'';position:absolute;inset:0;
       background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);
       background-size:32px 32px;
     }
-    /* scanline sweep */
     #intro::after{
       content:'';position:absolute;left:0;right:0;height:2px;top:-4px;
       background:linear-gradient(90deg,transparent,rgba(255,0,0,.7),transparent);
       animation:scan 2.4s linear forwards;z-index:2;
     }
     @keyframes scan{0%{top:-4px;opacity:1}100%{top:100%;opacity:0}}
-
     #intro.out{animation:intro-out .55s cubic-bezier(.4,0,.2,1) forwards}
     @keyframes intro-out{
       0%{opacity:1;filter:blur(0) brightness(1);transform:scale(1)}
       60%{opacity:1;filter:blur(0) brightness(2);transform:scale(1.04)}
       100%{opacity:0;filter:blur(8px) brightness(0);transform:scale(1.08)}
     }
-
     .i-wrap{text-align:center;position:relative;z-index:3}
-    /* Icon */
     .i-icon{
       width:88px;height:88px;border-radius:24px;margin:0 auto 24px;
       background:linear-gradient(135deg,#CC0000,#FF0000);
@@ -142,36 +194,17 @@ function buildHtml(version: string): string {
       box-shadow:0 0 40px rgba(255,0,0,.4),0 0 80px rgba(255,0,0,.15);
       position:relative;overflow:hidden;
     }
-    .i-icon::after{
-      content:'';position:absolute;inset:0;
-      background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
-    }
+    .i-icon::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent)}
     .i-icon svg{width:38px;height:38px;fill:#fff;position:relative;z-index:1}
     @keyframes icon-in{from{opacity:0;transform:scale(.5) rotate(-12deg)}to{opacity:1;transform:scale(1) rotate(0)}}
     @keyframes icon-pulse{0%,100%{box-shadow:0 0 40px rgba(255,0,0,.4),0 0 80px rgba(255,0,0,.15)}50%{box-shadow:0 0 60px rgba(255,0,0,.6),0 0 120px rgba(255,0,0,.25)}}
-
-    /* Split word title */
-    .i-title{
-      font-size:clamp(2.4rem,8vw,3.2rem);font-weight:900;letter-spacing:-2px;
-      display:flex;align-items:center;justify-content:center;gap:0;overflow:hidden;
-    }
+    .i-title{font-size:clamp(2.4rem,8vw,3.2rem);font-weight:900;letter-spacing:-2px;display:flex;align-items:center;justify-content:center;gap:0;overflow:hidden}
     .i-word{overflow:hidden;display:inline-block}
-    .i-word span{
-      display:inline-block;
-      animation:word-up .55s cubic-bezier(.34,1.2,.64,1) both;
-    }
+    .i-word span{display:inline-block;animation:word-up .55s cubic-bezier(.34,1.2,.64,1) both}
     .i-word:nth-child(1) span{animation-delay:.3s}
     .i-word:nth-child(2) span{animation-delay:.45s;color:#FF0000}
     @keyframes word-up{from{transform:translateY(100%);opacity:0}to{transform:none;opacity:1}}
-
-    /* Glitch overlay on title (brief) */
-    .i-title-glitch{
-      position:absolute;left:50%;transform:translateX(-50%);
-      font-size:clamp(2.4rem,8vw,3.2rem);font-weight:900;letter-spacing:-2px;
-      color:#FF0000;white-space:nowrap;pointer-events:none;
-      animation:glitch-run 2.8s ease forwards;
-      opacity:0;
-    }
+    .i-title-glitch{position:absolute;left:50%;transform:translateX(-50%);font-size:clamp(2.4rem,8vw,3.2rem);font-weight:900;letter-spacing:-2px;color:#FF0000;white-space:nowrap;pointer-events:none;animation:glitch-run 2.8s ease forwards;opacity:0}
     @keyframes glitch-run{
       0%,55%,100%{opacity:0;clip-path:inset(0 0 100% 0)}
       56%{opacity:1;clip-path:inset(20% 0 60% 0);transform:translateX(calc(-50% - 3px))}
@@ -179,25 +212,14 @@ function buildHtml(version: string): string {
       58%{clip-path:inset(40% 0 30% 0);transform:translateX(calc(-50% - 1px))}
       59%{opacity:0;clip-path:inset(0 0 100% 0)}
     }
-
-    .i-sub{
-      font-size:.72rem;font-weight:800;color:#717171;letter-spacing:3px;
-      text-transform:uppercase;margin-top:10px;
-      animation:fade-up .5s ease both;animation-delay:.65s;
-    }
+    .i-sub{font-size:.72rem;font-weight:800;color:#717171;letter-spacing:3px;text-transform:uppercase;margin-top:10px;animation:fade-up .5s ease both;animation-delay:.65s}
     @keyframes fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-
     .i-bar-track{width:180px;height:2px;background:#1a1a1a;border-radius:2px;margin:28px auto 0;overflow:hidden}
     .i-bar{height:100%;width:0;background:linear-gradient(90deg,#CC0000,#FF4444);border-radius:2px;box-shadow:0 0 8px #FF0000;transition:width 2.2s cubic-bezier(.4,0,.2,1)}
     .i-ver{color:#2a2a2a;font-size:.65rem;font-family:monospace;margin-top:10px;animation:fade-up .5s ease both;animation-delay:.7s}
 
     /* ── TOPBAR ── */
-    .topbar{
-      position:sticky;top:0;z-index:100;height:56px;
-      background:rgba(10,10,10,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-      border-bottom:1px solid rgba(255,255,255,.05);
-      display:flex;align-items:center;justify-content:space-between;padding:0 20px;
-    }
+    .topbar{position:sticky;top:0;z-index:100;height:56px;background:rgba(10,10,10,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:space-between;padding:0 20px}
     .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,0,0,.25),transparent)}
     .topbar-logo{display:flex;align-items:center;gap:9px;text-decoration:none;transition:opacity .2s}
     .topbar-logo:hover{opacity:.8}
@@ -214,23 +236,13 @@ function buildHtml(version: string): string {
 
     /* ── BELL ── */
     .bell-wrap{position:relative}
-    .bell-btn{
-      background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
-      border-radius:9px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;
-      cursor:pointer;color:#717171;transition:all .18s;position:relative;
-    }
+    .bell-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:9px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#717171;transition:all .18s;position:relative}
     .bell-btn:hover{background:rgba(255,255,255,.08);color:#F1F1F1;border-color:rgba(255,255,255,.15)}
     .bell-btn.active{background:rgba(255,0,0,.08);color:#FF4444;border-color:rgba(255,0,0,.25)}
     .bell-btn svg{width:15px;height:15px}
     .bell-dot{position:absolute;top:5px;right:5px;width:7px;height:7px;background:#FF0000;border-radius:50%;border:1.5px solid #0A0A0A;animation:dot-pulse 2s ease infinite}
     @keyframes dot-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
-    .bell-panel{
-      display:none;position:absolute;top:calc(100% + 12px);right:0;width:316px;
-      background:rgba(20,20,20,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-      border:1px solid rgba(255,255,255,.08);border-radius:16px;
-      box-shadow:0 24px 64px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.03);
-      z-index:200;overflow:hidden;transform-origin:top right;
-    }
+    .bell-panel{display:none;position:absolute;top:calc(100% + 12px);right:0;width:316px;background:rgba(20,20,20,.95);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.03);z-index:200;overflow:hidden;transform-origin:top right}
     .bell-panel.opening{display:block;animation:bell-in .22s cubic-bezier(.34,1.2,.64,1) both}
     .bell-panel.open{display:block}
     .bell-panel.closing{display:block;animation:bell-out .16s ease forwards}
@@ -258,86 +270,41 @@ function buildHtml(version: string): string {
     .cl-notes li::before{content:'·';position:absolute;left:0;color:#FF0000;font-weight:900}
 
     /* ── HERO ── */
-    .hero{
-      position:relative;overflow:hidden;
-      padding:clamp(56px,10vw,96px) 20px clamp(42px,7vw,72px);
-      text-align:center;
-      background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(136,0,0,.35) 0%,transparent 70%),
-                 linear-gradient(180deg,#140000 0%,#0A0A0A 100%);
-    }
-    .hero::before{
-      content:'';position:absolute;inset:0;
-      background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ff0000' fill-opacity='0.02'%3E%3Ccircle cx='30' cy='30' r='1.5'/%3E%3C/g%3E%3C/svg%3E");
-    }
+    .hero{position:relative;overflow:hidden;padding:clamp(56px,10vw,96px) 20px clamp(42px,7vw,72px);text-align:center;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(136,0,0,.35) 0%,transparent 70%),linear-gradient(180deg,#140000 0%,#0A0A0A 100%)}
+    .hero::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ff0000' fill-opacity='0.02'%3E%3Ccircle cx='30' cy='30' r='1.5'/%3E%3C/g%3E%3C/svg%3E")}
     #hero-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
     .hero-content{position:relative;z-index:2}
-    .hero-eyebrow{
-      display:inline-flex;align-items:center;gap:8px;
-      background:rgba(255,0,0,.08);border:1px solid rgba(255,0,0,.15);
-      border-radius:20px;padding:4px 14px;
-      font-size:.67rem;font-weight:800;color:rgba(255,80,80,.9);letter-spacing:2px;text-transform:uppercase;
-      margin-bottom:18px;animation:fade-up .5s ease both;animation-delay:.1s;
-    }
+    .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(255,0,0,.08);border:1px solid rgba(255,0,0,.15);border-radius:20px;padding:4px 14px;font-size:.67rem;font-weight:800;color:rgba(255,80,80,.9);letter-spacing:2px;text-transform:uppercase;margin-bottom:18px;animation:fade-up .5s ease both;animation-delay:.1s}
     .hero-eyebrow::before{content:'';width:6px;height:6px;background:#FF0000;border-radius:50%;box-shadow:0 0 6px #FF0000}
-    .hero h1{
-      font-size:clamp(2.8rem,8vw,4.4rem);font-weight:900;color:#F1F1F1;
-      letter-spacing:-3px;line-height:1;
-      animation:fade-up .6s ease both;animation-delay:.2s;
-    }
-    .hero-tf{
-      color:transparent;
-      background:linear-gradient(90deg,#FF4444,#FF0000);
-      -webkit-background-clip:text;background-clip:text;
-    }
-    .hero-sub{
-      margin-top:16px;color:rgba(241,241,241,.5);
-      font-size:clamp(.85rem,2vw,.95rem);line-height:1.6;
-      animation:fade-up .6s ease both;animation-delay:.3s;
-    }
-    .hero-badges{
-      display:flex;gap:8px;justify-content:center;margin-top:24px;flex-wrap:wrap;
-      animation:fade-up .6s ease both;animation-delay:.4s;
-    }
-    .hbadge{
-      background:rgba(255,255,255,.05);backdrop-filter:blur(6px);
-      color:rgba(241,241,241,.65);padding:5px 14px;border-radius:20px;
-      font-size:.68rem;font-weight:700;letter-spacing:.5px;
-      border:1px solid rgba(255,255,255,.07);
-      transition:all .2s;
-    }
+    .hero h1{font-size:clamp(2.8rem,8vw,4.4rem);font-weight:900;color:#F1F1F1;letter-spacing:-3px;line-height:1;animation:fade-up .6s ease both;animation-delay:.2s}
+    .hero-tf{color:transparent;background:linear-gradient(90deg,#FF4444,#FF0000);-webkit-background-clip:text;background-clip:text}
+    .hero-sub{margin-top:16px;color:rgba(241,241,241,.5);font-size:clamp(.85rem,2vw,.95rem);line-height:1.6;animation:fade-up .6s ease both;animation-delay:.3s}
+    .hero-badges{display:flex;gap:8px;justify-content:center;margin-top:24px;flex-wrap:wrap;animation:fade-up .6s ease both;animation-delay:.4s}
+    .hbadge{background:rgba(255,255,255,.05);backdrop-filter:blur(6px);color:rgba(241,241,241,.65);padding:5px 14px;border-radius:20px;font-size:.68rem;font-weight:700;letter-spacing:.5px;border:1px solid rgba(255,255,255,.07);transition:all .2s}
     .hbadge:hover{background:rgba(255,255,255,.09);color:#F1F1F1}
+
+    /* ── STATS BAR ── */
+    .stats-bar{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px;animation:fade-up .6s ease both;animation-delay:.5s}
+    .stat-item{display:flex;flex-direction:column;align-items:center;gap:3px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:10px 18px;min-width:80px}
+    .stat-num{font-size:1.25rem;font-weight:900;color:#F1F1F1;font-family:monospace;line-height:1;letter-spacing:-1px}
+    .stat-num.red{color:#FF4444}
+    .stat-lbl{font-size:.58rem;font-weight:700;color:#3F3F3F;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
 
     /* ── LAYOUT ── */
     .wrap{max-width:840px;margin:0 auto;padding:clamp(28px,4vw,48px) 16px 80px}
-    .sec-label{
-      font-size:.65rem;font-weight:800;color:#3F3F3F;text-transform:uppercase;
-      letter-spacing:1.2px;margin-bottom:12px;padding-left:2px;
-      display:flex;align-items:center;gap:10px;
-    }
+    .sec-label{font-size:.65rem;font-weight:800;color:#3F3F3F;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px;padding-left:2px;display:flex;align-items:center;gap:10px}
     .sec-label::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(255,255,255,.06),transparent)}
 
     /* ── ENDPOINT ACCORDION ── */
     .ep-list{display:flex;flex-direction:column;gap:7px;margin-bottom:32px}
-    .ep-card{
-      background:rgba(255,255,255,.02);
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:14px;overflow:hidden;
-      transition:border-color .25s,box-shadow .25s,transform .2s;
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-    }
+    .ep-card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden;transition:border-color .25s,box-shadow .25s,transform .2s;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
     .ep-card:hover{border-color:rgba(255,255,255,.13);transform:translateY(-1px);box-shadow:0 8px 32px rgba(0,0,0,.4)}
     .ep-card.open{border-color:rgba(255,0,0,.3);box-shadow:0 0 0 1px rgba(255,0,0,.08),0 12px 40px rgba(0,0,0,.5);transform:none}
-    .ep-header{
-      display:flex;align-items:center;gap:11px;padding:14px 18px;
-      cursor:pointer;transition:background .18s;
-    }
+    .ep-header{display:flex;align-items:center;gap:11px;padding:14px 18px;cursor:pointer;transition:background .18s}
     .ep-header:hover{background:rgba(255,255,255,.025)}
-    .ep-method{
-      font-size:.62rem;font-weight:900;padding:3px 9px;border-radius:6px;
-      background:rgba(74,222,128,.08);color:#4ade80;letter-spacing:.5px;flex-shrink:0;
-      border:1px solid rgba(74,222,128,.15);
-    }
+    .ep-method{font-size:.62rem;font-weight:900;padding:3px 9px;border-radius:6px;background:rgba(74,222,128,.08);color:#4ade80;letter-spacing:.5px;flex-shrink:0;border:1px solid rgba(74,222,128,.15)}
     .ep-method.v2{background:rgba(96,165,250,.08);color:#60a5fa;border-color:rgba(96,165,250,.15)}
+    .ep-method.v3{background:rgba(251,191,36,.08);color:#fbbf24;border-color:rgba(251,191,36,.15)}
     .ep-path{font-family:'Menlo','Consolas',monospace;font-size:.8rem;color:#60a5fa;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;-webkit-user-select:text}
     .ep-desc-label{font-size:.71rem;color:#3F3F3F;white-space:nowrap;margin-right:4px}
     @media(max-width:500px){.ep-desc-label{display:none}}
@@ -345,29 +312,18 @@ function buildHtml(version: string): string {
     .ep-chevron svg{width:14px;height:14px}
     .ep-card.open .ep-chevron{transform:rotate(180deg);color:#FF0000}
     .ep-body{max-height:0;overflow:hidden;transition:max-height .38s cubic-bezier(.4,0,.2,1);border-top:0 solid rgba(255,255,255,.06)}
-    .ep-card.open .ep-body{max-height:2000px;border-top-width:1px}
+    .ep-card.open .ep-body{max-height:3000px;border-top-width:1px}
     .ep-body-inner{padding:18px}
     .ep-info{font-size:.8rem;color:#717171;line-height:1.7;margin-bottom:16px}
     .ep-info code{background:rgba(255,255,255,.07);color:#F1F1F1;padding:1px 6px;border-radius:4px;font-size:.84em}
     .ep-info strong{color:#AAAAAA}
     .ep-badge-fast{display:inline-flex;align-items:center;gap:4px;background:rgba(96,165,250,.08);color:#60a5fa;border:1px solid rgba(96,165,250,.15);border-radius:5px;font-size:.66rem;font-weight:800;padding:2px 7px;letter-spacing:.4px;margin-left:5px;vertical-align:middle}
-
+    .ep-badge-new{display:inline-flex;align-items:center;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.2);border-radius:5px;font-size:.66rem;font-weight:800;padding:2px 7px;letter-spacing:.4px;margin-left:5px;vertical-align:middle}
     .ep-input-row{display:flex;gap:8px;margin-bottom:14px}
-    .ep-input{
-      flex:1;min-width:0;background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.09);border-radius:10px;
-      color:#F1F1F1;padding:11px 15px;font-size:.84rem;outline:none;
-      transition:border-color .2s,box-shadow .2s,background .2s;font-family:inherit;
-      user-select:text;-webkit-user-select:text;
-    }
+    .ep-input{flex:1;min-width:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);border-radius:10px;color:#F1F1F1;padding:11px 15px;font-size:.84rem;outline:none;transition:border-color .2s,box-shadow .2s,background .2s;font-family:inherit;user-select:text;-webkit-user-select:text}
     .ep-input:focus{border-color:rgba(255,0,0,.4);box-shadow:0 0 0 3px rgba(255,0,0,.08);background:rgba(255,255,255,.05)}
     .ep-input::placeholder{color:#2a2a2a}
-    .ep-fetch-btn{
-      background:linear-gradient(135deg,#CC0000,#FF0000);color:#fff;border:none;
-      padding:11px 20px;border-radius:10px;cursor:pointer;font-size:.82rem;font-weight:700;
-      transition:all .18s;white-space:nowrap;display:flex;align-items:center;gap:7px;
-      box-shadow:0 2px 12px rgba(255,0,0,.25);
-    }
+    .ep-fetch-btn{background:linear-gradient(135deg,#CC0000,#FF0000);color:#fff;border:none;padding:11px 20px;border-radius:10px;cursor:pointer;font-size:.82rem;font-weight:700;transition:all .18s;white-space:nowrap;display:flex;align-items:center;gap:7px;box-shadow:0 2px 12px rgba(255,0,0,.25)}
     .ep-fetch-btn:hover:not(:disabled){background:linear-gradient(135deg,#BB0000,#EE0000);transform:translateY(-1px);box-shadow:0 6px 20px rgba(255,0,0,.35)}
     .ep-fetch-btn:active:not(:disabled){transform:translateY(0);box-shadow:0 2px 8px rgba(255,0,0,.2)}
     .ep-fetch-btn:disabled{background:rgba(255,255,255,.06);color:#3F3F3F;cursor:not-allowed;transform:none;box-shadow:none}
@@ -382,8 +338,9 @@ function buildHtml(version: string): string {
     .ep-status.err{background:rgba(255,0,0,.08);color:#FF4444;border:1px solid rgba(255,0,0,.15)}
     .ep-ms{font-size:.67rem;color:#3F3F3F;font-family:monospace}
     .ep-cached{font-size:.67rem;color:#f59e0b;background:rgba(245,158,11,.08);padding:2px 8px;border-radius:5px;font-weight:700;border:1px solid rgba(245,158,11,.15)}
+    .ep-apicount{font-size:.67rem;color:#a78bfa;background:rgba(167,139,250,.08);padding:2px 8px;border-radius:5px;font-weight:700;border:1px solid rgba(167,139,250,.15);display:none}
 
-    /* Copy URL strip */
+    /* ── COPY URL STRIP ── */
     .copy-url-strip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:9px 13px;margin-bottom:12px;overflow:hidden}
     .copy-url-strip code{flex:1;font-family:'Menlo','Consolas',monospace;font-size:.72rem;color:#60a5fa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;-webkit-user-select:text}
     .copy-url-btn{background:rgba(255,255,255,.07);color:#AAAAAA;border:none;border-radius:6px;padding:4px 11px;font-size:.67rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;display:flex;align-items:center;gap:4px}
@@ -391,69 +348,37 @@ function buildHtml(version: string): string {
     .copy-url-btn svg{width:11px;height:11px}
 
     /* ── V1 RICH RESULT CARD ── */
-    .r-card{
-      background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);
-      border-radius:12px;overflow:hidden;margin-bottom:12px;
-      animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both;
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-    }
+    .r-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;margin-bottom:12px;animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
     @keyframes slide-up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
     .r-inner{display:grid;grid-template-columns:192px 1fr}
     @media(max-width:560px){.r-inner{grid-template-columns:1fr}}
-
-    /* ── THUMBNAIL / VIDEO PREVIEW ── */
     .r-thumb{position:relative;background:#0a0a0a;min-height:120px;overflow:hidden}
     .r-thumb-img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0;transition:opacity .55s ease}
     .r-dur{position:absolute;bottom:6px;right:6px;z-index:4;background:rgba(0,0,0,.85);color:#F1F1F1;font-size:.63rem;font-weight:700;padding:2px 6px;border-radius:4px;font-family:monospace}
     .r-cached-badge{position:absolute;top:6px;left:6px;z-index:4;display:none;background:rgba(255,0,0,.15);color:#FF4444;font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.4px;text-transform:uppercase;border:1px solid rgba(255,0,0,.2)}
-
-    /* Play overlay (initial) */
-    .r-play-overlay{
-      position:absolute;inset:0;z-index:3;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
-      background:rgba(0,0,0,.3);cursor:pointer;
-      transition:background .2s;
-    }
+    .r-play-overlay{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:rgba(0,0,0,.3);cursor:pointer;transition:background .2s}
     .r-play-overlay:hover{background:rgba(0,0,0,.45)}
-    .r-play-circle{
-      width:52px;height:52px;border-radius:50%;
-      background:rgba(255,0,0,.9);
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:0 0 24px rgba(255,0,0,.5);
-      transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s;
-    }
+    .r-play-circle{width:52px;height:52px;border-radius:50%;background:rgba(255,0,0,.9);display:flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(255,0,0,.5);transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s}
     .r-play-overlay:hover .r-play-circle{transform:scale(1.1);box-shadow:0 0 32px rgba(255,0,0,.7)}
     .r-play-circle svg{width:20px;height:20px;fill:#fff;margin-left:3px}
     .r-play-label{font-size:.67rem;font-weight:800;color:rgba(255,255,255,.7);letter-spacing:1px;text-transform:uppercase}
-
-    /* Countdown overlay */
-    .r-countdown-wrap{
-      position:absolute;inset:0;z-index:3;
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      background:rgba(0,0,0,.5);
-    }
+    .r-countdown-wrap{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
     .r-ring-svg{width:90px;height:90px;transform:rotate(-90deg)}
     .r-ring-bg{fill:none;stroke:rgba(255,255,255,.1);stroke-width:4}
     .r-ring-arc{fill:none;stroke:#FF0000;stroke-width:4;stroke-linecap:round;stroke-dasharray:201;stroke-dashoffset:201;transition:stroke-dashoffset 5s linear;filter:drop-shadow(0 0 4px #FF0000)}
-    .r-countdown-n{
-      position:absolute;font-size:1.8rem;font-weight:900;color:#F1F1F1;
-      text-shadow:0 0 20px rgba(255,0,0,.6);
-    }
+    .r-countdown-n{position:absolute;font-size:1.8rem;font-weight:900;color:#F1F1F1;text-shadow:0 0 20px rgba(255,0,0,.6)}
     .r-skip-btn{margin-top:10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);font-size:.65rem;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all .15s;letter-spacing:.5px}
     .r-skip-btn:hover{background:rgba(255,255,255,.18);color:#fff}
-
-    /* YouTube iframe wrap */
     .r-yt-wrap{position:absolute;inset:0;z-index:5;display:none;animation:yt-fade-in .5s ease both}
     @keyframes yt-fade-in{from{opacity:0}to{opacity:1}}
     .r-yt-wrap iframe{width:100%;height:100%;border:none;display:block}
-
-    /* Result card body */
     .r-body{padding:15px 18px;display:flex;flex-direction:column;gap:9px;min-width:0}
     .r-title{font-size:.9rem;font-weight:700;color:#F1F1F1;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .r-author{font-size:.74rem;color:#60a5fa;text-decoration:none;font-weight:600;transition:color .15s}
     .r-author:hover{color:#93c5fd}
-    .r-stats{display:flex;flex-wrap:wrap;gap:4px 12px}
+    .r-stats{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
     .r-stat{font-size:.7rem;color:#717171;display:flex;align-items:center;gap:4px}
+    .cat-badge{display:inline-flex;align-items:center;background:rgba(251,191,36,.08);color:#fbbf24;border:1px solid rgba(251,191,36,.14);border-radius:5px;font-size:.6rem;font-weight:800;padding:2px 8px;letter-spacing:.4px;display:none}
     .r-desc-wrap{font-size:.73rem;color:#717171;line-height:1.55;display:none}
     .r-desc-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;user-select:text;-webkit-user-select:text}
     .r-desc-text.exp{-webkit-line-clamp:unset;display:block;max-height:200px;overflow-y:auto;padding-right:4px}
@@ -464,13 +389,28 @@ function buildHtml(version: string): string {
     .r-dl{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 
     /* ── V2 QUICK RESULT CARD ── */
-    .v2-card{
-      background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);
-      border-radius:12px;padding:18px 20px;margin-bottom:12px;
-      animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both;
-    }
+    .v2-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:18px 20px;margin-bottom:12px;animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both}
     .v2-label{font-size:.62rem;font-weight:800;color:#3F3F3F;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px}
     .v2-dl{display:flex;gap:8px;flex-wrap:wrap}
+
+    /* ── V3 RESULT LIST ── */
+    .v3-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both}
+    .v3-item{display:flex;gap:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px;transition:border-color .18s;overflow:hidden}
+    .v3-item:hover{border-color:rgba(255,255,255,.12)}
+    .v3-num{font-size:.65rem;font-weight:900;color:#2a2a2a;min-width:14px;padding-top:2px;text-align:right;flex-shrink:0}
+    .v3-thumb-wrap{position:relative;flex-shrink:0;width:96px;height:54px;border-radius:6px;overflow:hidden;background:#111}
+    .v3-thumb-img{width:100%;height:100%;object-fit:cover;display:block}
+    .v3-dur-badge{position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.88);color:#F1F1F1;font-size:.55rem;font-weight:700;padding:1px 5px;border-radius:3px;font-family:monospace}
+    .v3-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+    .v3-title{font-size:.79rem;font-weight:700;color:#F1F1F1;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-decoration:none}
+    .v3-title:hover{color:#60a5fa}
+    .v3-channel{font-size:.68rem;color:#60a5fa;font-weight:600;text-decoration:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .v3-channel:hover{color:#93c5fd}
+    .v3-meta-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:1px}
+    .v3-views,.v3-date{font-size:.64rem;color:#3F3F3F}
+    .v3-cat-badge{font-size:.57rem;font-weight:800;color:#fbbf24;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.13);border-radius:4px;padding:1px 6px;letter-spacing:.3px}
+    .v3-desc{font-size:.69rem;color:#444;line-height:1.4;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+    @media(max-width:480px){.v3-thumb-wrap{width:72px;height:42px}.v3-title{font-size:.74rem}}
 
     /* ── SHARED DOWNLOAD BUTTONS ── */
     .dl-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;font-size:.78rem;font-weight:700;text-decoration:none;transition:all .18s;border:1px solid transparent}
@@ -491,18 +431,13 @@ function buildHtml(version: string): string {
     .json-label{font-size:.63rem;font-weight:800;color:#2a2a2a;text-transform:uppercase;letter-spacing:.8px}
     .copy-btn{background:rgba(255,255,255,.06);color:#717171;border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:3px 10px;font-size:.66rem;cursor:pointer;font-weight:700;transition:all .15s}
     .copy-btn:hover{background:rgba(255,255,255,.1);color:#F1F1F1}
-    pre.jbox{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:15px;font-family:'Menlo','Consolas',monospace;font-size:.71rem;line-height:1.7;overflow:auto;white-space:pre-wrap;word-break:break-all;max-height:340px;margin:0;user-select:text;-webkit-user-select:text}
+    pre.jbox{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:14px 16px;font-family:'Menlo','Consolas',monospace;font-size:.72rem;line-height:1.75;overflow-x:auto;max-height:320px;overflow-y:auto;color:#717171;white-space:pre}
     pre.jbox::-webkit-scrollbar{width:4px;height:4px}
     pre.jbox::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:2px}
     .jk{color:#FF4444}.js{color:#86efac}.jn{color:#fbbf24}.jb{color:#818cf8}
 
     /* ── MISC CARDS ── */
-    .card{
-      background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);
-      border-radius:16px;padding:clamp(20px,3.5vw,28px);margin-bottom:22px;
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      transition:border-color .25s,box-shadow .25s;
-    }
+    .card{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:clamp(20px,3.5vw,28px);margin-bottom:22px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .25s,box-shadow .25s}
     .card:hover{border-color:rgba(255,255,255,.1);box-shadow:0 8px 32px rgba(0,0,0,.3)}
     .card-title{font-size:.67rem;font-weight:800;color:#3F3F3F;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
     .card-title::before{content:'';width:3px;height:11px;background:#FF0000;border-radius:2px;display:inline-block;box-shadow:0 0 6px rgba(255,0,0,.4)}
@@ -511,6 +446,20 @@ function buildHtml(version: string): string {
     .about strong{color:#F1F1F1}
     .disc p{color:#AAAAAA;line-height:1.85;font-size:.86rem}
     .disc strong{color:#fbbf24}
+
+    /* ── FAQ ── */
+    .faq-list{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
+    .faq-item{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;transition:border-color .2s}
+    .faq-item.open{border-color:rgba(255,0,0,.22)}
+    .faq-q{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;cursor:pointer;font-size:.84rem;font-weight:600;color:#F1F1F1;transition:background .18s;line-height:1.4}
+    .faq-q:hover{background:rgba(255,255,255,.025)}
+    .faq-icon{font-size:1.1rem;color:#3F3F3F;flex-shrink:0;transition:transform .3s cubic-bezier(.34,1.2,.64,1),color .2s;line-height:1;font-weight:300}
+    .faq-item.open .faq-icon{transform:rotate(45deg);color:#FF0000}
+    .faq-a{max-height:0;overflow:hidden;transition:max-height .35s cubic-bezier(.4,0,.2,1)}
+    .faq-item.open .faq-a{max-height:500px}
+    .faq-a-inner{padding:0 18px 16px;font-size:.8rem;color:#AAAAAA;line-height:1.8;border-top:1px solid rgba(255,255,255,.05)}
+    .faq-a-inner code{background:rgba(255,255,255,.07);color:#F1F1F1;padding:1px 6px;border-radius:4px;font-size:.88em;font-family:monospace}
+    .faq-a-inner strong{color:#F1F1F1}
 
     /* ── FOOTER ── */
     footer{text-align:center;padding:32px 20px;color:#2a2a2a;font-size:.73rem;border-top:1px solid rgba(255,255,255,.04)}
@@ -547,8 +496,8 @@ function buildHtml(version: string): string {
   <div class="topbar-right">
     <div class="nav-links">
       <a href="#endpoints">Endpoints</a>
+      <a href="#faq">FAQ</a>
       <a href="#about">About</a>
-      <a href="#disclaimer">Disclaimer</a>
     </div>
     <div class="bell-wrap">
       <button class="bell-btn" id="bell-btn" onclick="toggleBell()" title="Changelog">
@@ -572,12 +521,30 @@ function buildHtml(version: string): string {
   <div class="hero-content">
     <div class="hero-eyebrow">YouTube Downloader API</div>
     <h1>Tube<span class="hero-tf">Fetch</span></h1>
-    <div class="hero-sub">Real-time metadata &middot; MP4 HD &amp; MP3 download links &middot; by MJL</div>
+    <div class="hero-sub">Real-time metadata &middot; MP4 HD &amp; MP3 download links &middot; Top 10 search results &middot; by MJL</div>
     <div class="hero-badges">
       <span class="hbadge">v${version}</span>
       <span class="hbadge">by MJL</span>
       <span class="hbadge">YouTube Only</span>
       <span class="hbadge">90s Cache</span>
+    </div>
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-num red" id="stat-count">—</span>
+        <span class="stat-lbl">API Calls</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">v${version}</span>
+        <span class="stat-lbl">Version</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">90s</span>
+        <span class="stat-lbl">Cache TTL</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num">3</span>
+        <span class="stat-lbl">Endpoints</span>
+      </div>
     </div>
   </div>
 </div>
@@ -598,7 +565,7 @@ function buildHtml(version: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Pass any YouTube <code>URL</code> or plain search title. Returns full metadata — title, author, thumbnail, duration, views, description — plus direct <code>MP4</code> &amp; <code>MP3</code> download links. Results cached <strong>90 seconds</strong>. Includes <strong>ms</strong> timing. Click <strong>Preview</strong> on the thumbnail to watch inline.</p>
+          <p class="ep-info">Pass any YouTube <code>URL</code> or plain search title. Returns full metadata — title, author, thumbnail, duration, views, description, <strong>category</strong> — plus direct <code>MP4</code> &amp; <code>MP3</code> download links. Results cached <strong>90 seconds</strong>. Every response includes <code>ApiCount</code>.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q0" type="text" placeholder="e.g. bohemian rhapsody  or  https://youtu.be/&hellip;" onkeydown="if(event.key==='Enter')fetchEp(0)"/>
             <button class="ep-fetch-btn" id="btn0" onclick="fetchEp(0)">
@@ -617,6 +584,7 @@ function buildHtml(version: string): string {
               <span class="ep-status" id="stat0"></span>
               <span class="ep-ms" id="ms0"></span>
               <span class="ep-cached" id="cac0" style="display:none">&#x26A1; Cached</span>
+              <span class="ep-apicount" id="apc0"></span>
             </div>
             <div class="copy-url-strip" id="curl0" style="display:none">
               <code id="curl0-text"></code>
@@ -624,20 +592,16 @@ function buildHtml(version: string): string {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL
               </button>
             </div>
-            <!-- V1 Rich Card -->
             <div class="r-card" id="rcard0" style="display:none">
               <div class="r-inner">
-                <!-- Thumbnail / Video Preview -->
                 <div class="r-thumb" id="r-thumb-wrap">
                   <img id="r-thumb-img" src="" alt="" class="r-thumb-img"/>
                   <span class="r-dur" id="r-dur" style="display:none"></span>
                   <span class="r-cached-badge" id="r-cached-b"></span>
-                  <!-- Play overlay -->
                   <div class="r-play-overlay" id="r-play-overlay" onclick="startPreview()">
                     <div class="r-play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
                     <span class="r-play-label">Preview</span>
                   </div>
-                  <!-- Countdown -->
                   <div class="r-countdown-wrap" id="r-countdown-wrap" style="display:none">
                     <svg class="r-ring-svg" viewBox="0 0 80 80">
                       <circle class="r-ring-bg" cx="40" cy="40" r="32"/>
@@ -646,16 +610,16 @@ function buildHtml(version: string): string {
                     <span class="r-countdown-n" id="r-countdown-n">5</span>
                     <button class="r-skip-btn" onclick="skipCountdown()">Skip</button>
                   </div>
-                  <!-- YouTube iframe -->
                   <div class="r-yt-wrap" id="r-yt-wrap">
                     <iframe id="r-yt-frame" frameborder="0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" src=""></iframe>
                   </div>
                 </div>
-                <!-- Info body -->
                 <div class="r-body">
                   <div class="r-title" id="r-title"></div>
                   <a class="r-author" id="r-author" href="#" target="_blank" rel="noopener"></a>
-                  <div class="r-stats" id="r-stats"></div>
+                  <div class="r-stats" id="r-stats">
+                    <span class="cat-badge" id="r-cat"></span>
+                  </div>
                   <div class="r-desc-wrap" id="r-desc-wrap">
                     <div class="r-desc-text" id="r-desc"></div>
                     <button class="r-more" id="r-more" onclick="toggleDesc()">Read more</button>
@@ -684,7 +648,7 @@ function buildHtml(version: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Faster than v1 — skips all metadata, fetches only direct <code>MP4</code> &amp; <code>MP3</code> download links. Response includes <code>credit</code>, <code>version</code>, and <code>ms</code> timing. No title, no extra fields.</p>
+          <p class="ep-info">Faster than v1 — skips all metadata, fetches only direct <code>MP4</code> &amp; <code>MP3</code> download links. Response includes <code>credit</code>, <code>version</code>, <code>ApiCount</code>, and <code>ms</code> timing. No title, no extra fields.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q3" type="text" placeholder="e.g. never gonna give you up  or  https://youtu.be/&hellip;" onkeydown="if(event.key==='Enter')fetchEp(3)"/>
             <button class="ep-fetch-btn" id="btn3" onclick="fetchEp(3)">
@@ -700,6 +664,7 @@ function buildHtml(version: string): string {
               <span class="ep-status" id="stat3"></span>
               <span class="ep-ms" id="ms3"></span>
               <span class="ep-cached" id="cac3" style="display:none">&#x26A1; Cached</span>
+              <span class="ep-apicount" id="apc3"></span>
             </div>
             <div class="copy-url-strip" id="curl3" style="display:none">
               <code id="curl3-text"></code>
@@ -721,8 +686,54 @@ function buildHtml(version: string): string {
       </div>
     </div>
 
+    <!-- V3 -->
+    <div class="ep-card reveal reveal-d3" id="ep4">
+      <div class="ep-header" onclick="toggleEp(4)">
+        <span class="ep-method v3">GET</span>
+        <span class="ep-path">/api/v3/q?=(title or keyword)</span>
+        <span class="ep-desc-label">Top 10 search results <span class="ep-badge-new">&#x2605; New</span></span>
+        <span class="ep-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+      </div>
+      <div class="ep-body">
+        <div class="ep-body-inner">
+          <p class="ep-info">Returns up to <strong>10 ranked YouTube search results</strong> — each with url, title, description, channel name &amp; url, published date, duration, thumbnail, views, and <strong>category</strong>. Includes <code>credit</code>, <code>version</code>, <code>ApiCount</code>, and <code>ms</code>. No download links — use v1/v2 for those.</p>
+          <div class="ep-input-row">
+            <input class="ep-input" id="q4" type="text" placeholder="e.g. top hits 2025  or  relaxing lofi music" onkeydown="if(event.key==='Enter')fetchEp(4)"/>
+            <button class="ep-fetch-btn" id="btn4" onclick="fetchEp(4)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search
+            </button>
+          </div>
+          <div class="ep-skel" id="skel4">
+            <div class="skel-line" style="width:70%;height:14px"></div>
+            <div class="skel-line" style="width:55%"></div>
+            <div class="skel-line" style="width:60%;height:14px"></div>
+            <div class="skel-line" style="width:45%"></div>
+          </div>
+          <div class="ep-result" id="res4">
+            <div class="ep-result-meta">
+              <span class="ep-status" id="stat4"></span>
+              <span class="ep-ms" id="ms4"></span>
+              <span class="ep-apicount" id="apc4"></span>
+            </div>
+            <div class="copy-url-strip" id="curl4" style="display:none">
+              <code id="curl4-text"></code>
+              <button class="copy-url-btn" onclick="copyUrl(4)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL
+              </button>
+            </div>
+            <div class="v3-list" id="v3list" style="display:none"></div>
+            <div class="json-actions">
+              <span class="json-label">Raw Response</span>
+              <button class="copy-btn" onclick="copyRaw(4)">Copy JSON</button>
+            </div>
+            <pre class="jbox" id="raw4"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Uptime -->
-    <div class="ep-card reveal reveal-d3" id="ep1">
+    <div class="ep-card reveal reveal-d4" id="ep1">
       <div class="ep-header" onclick="toggleEp(1)">
         <span class="ep-method">GET</span>
         <span class="ep-path">/api/uptime</span>
@@ -731,7 +742,7 @@ function buildHtml(version: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Returns the server uptime in seconds plus a status string. Useful for monitoring or health dashboards.</p>
+          <p class="ep-info">Returns the server uptime in seconds plus a status string. Includes <code>ApiCount</code>. Useful for monitoring or health dashboards.</p>
           <div class="ep-input-row">
             <button class="ep-fetch-btn" id="btn1" onclick="fetchEp(1)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Fetch
@@ -739,7 +750,11 @@ function buildHtml(version: string): string {
           </div>
           <div class="ep-skel" id="skel1"><div class="skel-line" style="width:55%"></div><div class="skel-line" style="width:38%"></div></div>
           <div class="ep-result" id="res1">
-            <div class="ep-result-meta"><span class="ep-status" id="stat1"></span><span class="ep-ms" id="ms1"></span></div>
+            <div class="ep-result-meta">
+              <span class="ep-status" id="stat1"></span>
+              <span class="ep-ms" id="ms1"></span>
+              <span class="ep-apicount" id="apc1"></span>
+            </div>
             <div class="copy-url-strip" id="curl1"><code id="curl1-text">/api/uptime</code><button class="copy-url-btn" onclick="copyUrl(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL</button></div>
             <div class="json-actions"><span class="json-label">Raw Response</span><button class="copy-btn" onclick="copyRaw(1)">Copy JSON</button></div>
             <pre class="jbox" id="raw1"></pre>
@@ -749,7 +764,7 @@ function buildHtml(version: string): string {
     </div>
 
     <!-- Health -->
-    <div class="ep-card reveal reveal-d4" id="ep2">
+    <div class="ep-card reveal" id="ep2">
       <div class="ep-header" onclick="toggleEp(2)">
         <span class="ep-method">GET</span>
         <span class="ep-path">/api/healthz</span>
@@ -758,7 +773,7 @@ function buildHtml(version: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Simple liveness probe. Returns <code>ok</code> when the server is healthy. Used by Render, Replit, and Vercel.</p>
+          <p class="ep-info">Simple liveness probe. Returns <code>ok</code> when the server is healthy. Includes <code>ApiCount</code>. Used by Render, Replit, and Vercel.</p>
           <div class="ep-input-row">
             <button class="ep-fetch-btn" id="btn2" onclick="fetchEp(2)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Fetch
@@ -766,7 +781,11 @@ function buildHtml(version: string): string {
           </div>
           <div class="ep-skel" id="skel2"><div class="skel-line" style="width:38%"></div></div>
           <div class="ep-result" id="res2">
-            <div class="ep-result-meta"><span class="ep-status" id="stat2"></span><span class="ep-ms" id="ms2"></span></div>
+            <div class="ep-result-meta">
+              <span class="ep-status" id="stat2"></span>
+              <span class="ep-ms" id="ms2"></span>
+              <span class="ep-apicount" id="apc2"></span>
+            </div>
             <div class="copy-url-strip" id="curl2"><code id="curl2-text">/api/healthz</code><button class="copy-url-btn" onclick="copyUrl(2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL</button></div>
             <div class="json-actions"><span class="json-label">Raw Response</span><button class="copy-btn" onclick="copyRaw(2)">Copy JSON</button></div>
             <pre class="jbox" id="raw2"></pre>
@@ -777,9 +796,13 @@ function buildHtml(version: string): string {
 
   </div><!-- /ep-list -->
 
+  <!-- FAQ -->
+  <div class="sec-label reveal" id="faq">&#x2753; Frequently Asked Questions</div>
+  <div class="faq-list reveal">${faqItems}</div>
+
   <div class="card about reveal" id="about">
     <div class="card-title">About TubeFetch</div>
-    <p>Pass any YouTube URL or plain search title to <code>/api/v1/q</code> for full metadata or <code>/api/v2/q</code> for a faster response with just the download links. Get direct <strong>MP4 HD</strong> and <strong>MP3</strong> URLs ready for bots, apps, or scripts. Results are cached for <strong>90 seconds</strong>. Every response includes a <strong>ms</strong> timing field.</p>
+    <p>Pass any YouTube URL or plain search title to <code>/api/v1/q</code> for full metadata or <code>/api/v2/q</code> for a faster response with just the download links. Use <code>/api/v3/q</code> to get a ranked list of up to 10 search results. Get direct <strong>MP4 HD</strong> and <strong>MP3</strong> URLs ready for bots, apps, or scripts. Results are cached for <strong>90 seconds</strong>. Every response includes a <strong>ms</strong> timing field and an <strong>ApiCount</strong> showing the total number of API calls served.</p>
   </div>
 
   <div class="card disc reveal" id="disclaimer">
@@ -800,19 +823,27 @@ function buildHtml(version: string): string {
 (function(){
   var bar = document.getElementById('i-bar');
   var intro = document.getElementById('intro');
-  /* start progress bar */
   requestAnimationFrame(function(){ requestAnimationFrame(function(){ bar.style.width = '100%'; }); });
-  /* icon pulse after in */
   setTimeout(function(){
     var ic = document.getElementById('i-icon');
     if(ic) ic.style.animation = 'icon-in .6s cubic-bezier(.34,1.56,.64,1) both, icon-pulse 2s ease 0.6s infinite';
   }, 600);
-  /* dismiss */
   setTimeout(function(){
     intro.classList.add('out');
-    setTimeout(function(){ intro.style.display = 'none'; initParticles(); initReveal(); }, 600);
+    setTimeout(function(){ intro.style.display = 'none'; initParticles(); initReveal(); fetchStats(); }, 600);
   }, 2700);
 })();
+
+/* ════════════════════════════════
+   LIVE STATS
+════════════════════════════════ */
+function fetchStats(){
+  fetch('/api/stats').then(function(r){ return r.json(); }).then(function(d){
+    var el = document.getElementById('stat-count');
+    if(el && typeof d.ApiCount === 'number') el.textContent = d.ApiCount.toLocaleString();
+  }).catch(function(){});
+}
+setInterval(fetchStats, 5000);
 
 /* ════════════════════════════════
    PARTICLES
@@ -828,61 +859,33 @@ function initParticles(){
   PH = PCV.height = hero.offsetHeight;
   PARTS = [];
   for(var i = 0; i < 48; i++){
-    PARTS.push({
-      x: Math.random() * PW, y: Math.random() * PH,
-      vx: (Math.random()-.5)*.55, vy: (Math.random()-.5)*.55,
-      r: Math.random()*1.4+.4, a: Math.random()*.25+.08
-    });
+    PARTS.push({x:Math.random()*PW,y:Math.random()*PH,vx:(Math.random()-.5)*.55,vy:(Math.random()-.5)*.55,r:Math.random()*1.4+.4,a:Math.random()*.25+.08});
   }
-  hero.addEventListener('mousemove', function(e){
-    var rect = hero.getBoundingClientRect();
-    MOUSE.x = e.clientX - rect.left;
-    MOUSE.y = e.clientY - rect.top;
-  });
-  hero.addEventListener('mouseleave', function(){ MOUSE.x = -9999; MOUSE.y = -9999; });
-  window.addEventListener('resize', function(){
-    PW = PCV.width = hero.offsetWidth;
-    PH = PCV.height = hero.offsetHeight;
-  });
-  if(!RAF_RUNNING){ RAF_RUNNING = true; tickParticles(); }
+  hero.addEventListener('mousemove',function(e){ var rect=hero.getBoundingClientRect(); MOUSE.x=e.clientX-rect.left; MOUSE.y=e.clientY-rect.top; });
+  hero.addEventListener('mouseleave',function(){ MOUSE.x=-9999; MOUSE.y=-9999; });
+  window.addEventListener('resize',function(){ PW=PCV.width=hero.offsetWidth; PH=PCV.height=hero.offsetHeight; });
+  if(!RAF_RUNNING){ RAF_RUNNING=true; tickParticles(); }
 }
 
 function tickParticles(){
   requestAnimationFrame(tickParticles);
   PCTX.clearRect(0,0,PW,PH);
-  for(var i = 0; i < PARTS.length; i++){
-    var p = PARTS[i];
-    /* mouse repel */
-    var mx = p.x - MOUSE.x, my = p.y - MOUSE.y;
-    var md = Math.sqrt(mx*mx + my*my);
-    if(md < 90 && md > 0){
-      var f = (90 - md) / 90 * .04;
-      p.vx += mx/md * f; p.vy += my/md * f;
-    }
-    /* cap speed */
-    var sp = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
-    if(sp > 1.4){ p.vx = p.vx/sp*1.4; p.vy = p.vy/sp*1.4; }
-    p.x += p.vx; p.y += p.vy;
-    if(p.x < 0){ p.x = 0; p.vx *= -1; }
-    if(p.x > PW){ p.x = PW; p.vx *= -1; }
-    if(p.y < 0){ p.y = 0; p.vy *= -1; }
-    if(p.y > PH){ p.y = PH; p.vy *= -1; }
-    /* draw dot */
-    PCTX.beginPath();
-    PCTX.arc(p.x, p.y, p.r, 0, 6.2832);
-    PCTX.fillStyle = 'rgba(255,255,255,'+p.a+')';
-    PCTX.fill();
-    /* draw connections */
-    for(var j = i+1; j < PARTS.length; j++){
-      var q = PARTS[j];
-      var dx = p.x-q.x, dy = p.y-q.y, d = Math.sqrt(dx*dx+dy*dy);
-      if(d < 115){
-        PCTX.beginPath();
-        PCTX.moveTo(p.x, p.y);
-        PCTX.lineTo(q.x, q.y);
-        PCTX.strokeStyle = 'rgba(255,255,255,'+(0.12*(1-d/115))+')';
-        PCTX.lineWidth = .6;
-        PCTX.stroke();
+  for(var i=0;i<PARTS.length;i++){
+    var p=PARTS[i];
+    var mx=p.x-MOUSE.x,my=p.y-MOUSE.y,md=Math.sqrt(mx*mx+my*my);
+    if(md<90&&md>0){ var f=(90-md)/90*.04; p.vx+=mx/md*f; p.vy+=my/md*f; }
+    var sp=Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+    if(sp>1.4){ p.vx=p.vx/sp*1.4; p.vy=p.vy/sp*1.4; }
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<0){p.x=0;p.vx*=-1;} if(p.x>PW){p.x=PW;p.vx*=-1;}
+    if(p.y<0){p.y=0;p.vy*=-1;} if(p.y>PH){p.y=PH;p.vy*=-1;}
+    PCTX.beginPath(); PCTX.arc(p.x,p.y,p.r,0,6.2832);
+    PCTX.fillStyle='rgba(255,255,255,'+p.a+')'; PCTX.fill();
+    for(var j=i+1;j<PARTS.length;j++){
+      var q=PARTS[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
+      if(d<115){
+        PCTX.beginPath(); PCTX.moveTo(p.x,p.y); PCTX.lineTo(q.x,q.y);
+        PCTX.strokeStyle='rgba(255,255,255,'+(0.12*(1-d/115))+')'; PCTX.lineWidth=.6; PCTX.stroke();
       }
     }
   }
@@ -892,36 +895,31 @@ function tickParticles(){
    SCROLL REVEAL
 ════════════════════════════════ */
 function initReveal(){
-  var els = document.querySelectorAll('.reveal');
-  if(!('IntersectionObserver' in window)){
-    els.forEach(function(el){ el.classList.add('in-view'); });
-    return;
-  }
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(e){ if(e.isIntersecting) e.target.classList.add('in-view'); });
-  }, {threshold:.08});
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){ els.forEach(function(el){ el.classList.add('in-view'); }); return; }
+  var io=new IntersectionObserver(function(entries){ entries.forEach(function(e){ if(e.isIntersecting) e.target.classList.add('in-view'); }); },{threshold:.08});
   els.forEach(function(el){ io.observe(el); });
 }
 
 /* ════════════════════════════════
    BELL
 ════════════════════════════════ */
-var bellOpen = false;
-function toggleBell(){ bellOpen ? closeBell() : openBell(); }
+var bellOpen=false;
+function toggleBell(){ bellOpen?closeBell():openBell(); }
 function openBell(){
-  var p=document.getElementById('bell-panel'), b=document.getElementById('bell-btn');
+  var p=document.getElementById('bell-panel'),b=document.getElementById('bell-btn');
   bellOpen=true; b.classList.add('active');
   document.getElementById('bell-dot').style.display='none';
   p.classList.remove('closing'); p.classList.add('opening');
-  setTimeout(function(){ p.classList.remove('opening'); p.classList.add('open'); }, 220);
-  setTimeout(function(){ document.addEventListener('click', bellOutside, true); }, 10);
+  setTimeout(function(){ p.classList.remove('opening'); p.classList.add('open'); },220);
+  setTimeout(function(){ document.addEventListener('click',bellOutside,true); },10);
 }
 function closeBell(){
-  var p=document.getElementById('bell-panel'), b=document.getElementById('bell-btn');
+  var p=document.getElementById('bell-panel'),b=document.getElementById('bell-btn');
   bellOpen=false; b.classList.remove('active');
-  document.removeEventListener('click', bellOutside, true);
+  document.removeEventListener('click',bellOutside,true);
   p.classList.remove('open','opening'); p.classList.add('closing');
-  setTimeout(function(){ p.classList.remove('closing'); }, 160);
+  setTimeout(function(){ p.classList.remove('closing'); },160);
 }
 function bellOutside(e){ if(!document.querySelector('.bell-wrap').contains(e.target)) closeBell(); }
 
@@ -931,13 +929,18 @@ function bellOutside(e){ if(!document.querySelector('.bell-wrap').contains(e.tar
 function toggleEp(n){ document.getElementById('ep'+n).classList.toggle('open'); }
 
 /* ════════════════════════════════
+   FAQ
+════════════════════════════════ */
+function toggleFaq(i){ document.getElementById('faq'+i).classList.toggle('open'); }
+
+/* ════════════════════════════════
    STATE
 ════════════════════════════════ */
-var rawStore={0:'',1:'',2:'',3:''};
-var urlStore={0:'',1:'',2:'',3:''};
+var rawStore={0:'',1:'',2:'',3:'',4:''};
+var urlStore={0:'',1:'',2:'',3:'',4:''};
 var descExpanded=false;
 var v1VideoId='';
-var cdTimer=null, cdInterval=null;
+var cdTimer=null,cdInterval=null;
 
 /* ════════════════════════════════
    UTILS
@@ -952,9 +955,11 @@ function fmtViews(n){
   return n.toLocaleString()+' views';
 }
 
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function hl(raw){
-  var esc=function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-  return esc(raw).replace(
+  var e=function(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  return e(raw).replace(
     /("(?:[^"\\\\]|\\\\.)*")(\\s*:)|("(?:[^"\\\\]|\\\\.)*")|(\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b)|(\\btrue\\b|\\bfalse\\b|\\bnull\\b)/g,
     function(_,key,col,str,num,bool){
       if(key) return '<span class="jk">'+key+'</span>'+col;
@@ -966,9 +971,7 @@ function hl(raw){
   );
 }
 
-function dlIcon(){
-  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-}
+function dlIcon(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'; }
 
 function copyRaw(n){
   if(!rawStore[n]) return;
@@ -978,25 +981,82 @@ function copyRaw(n){
   });
 }
 function copyUrl(n){
-  if(!urlStore[n]) return;
-  navigator.clipboard.writeText(urlStore[n]).then(function(){
+  var u=urlStore[n]||document.getElementById('curl'+n+'-text')&&document.getElementById('curl'+n+'-text').textContent;
+  if(!u) return;
+  navigator.clipboard.writeText(u).then(function(){
     var b=document.querySelector('#curl'+n+' .copy-url-btn');
     if(b){ var h=b.innerHTML; b.textContent='Copied!'; setTimeout(function(){ b.innerHTML=h; },1500); }
   });
+}
+
+/* Show ApiCount badge */
+function showApiCount(n, data){
+  var el=document.getElementById('apc'+n);
+  if(!el) return;
+  if(typeof data==='object'&&data&&typeof data.ApiCount==='number'){
+    el.textContent='Call #'+data.ApiCount;
+    el.style.display='inline-flex';
+    /* update hero stats bar */
+    var sc=document.getElementById('stat-count');
+    if(sc) sc.textContent=data.ApiCount.toLocaleString();
+  } else {
+    el.style.display='none';
+  }
+}
+
+/* ════════════════════════════════
+   V3 RESULT LIST
+════════════════════════════════ */
+function renderV3List(results){
+  var list=document.getElementById('v3list');
+  if(!list) return;
+  if(!results||!results.length){
+    list.innerHTML='<div style="font-size:.8rem;color:#3F3F3F;padding:8px 0">No results found.</div>';
+    sv('v3list',true,'block');
+    return;
+  }
+  var html='';
+  for(var i=0;i<results.length;i++){
+    var v=results[i];
+    var thumb=esc(v.thumbnail||'');
+    var title=esc(v.title||'');
+    var chanName=esc(v.channel_name||'');
+    var chanUrl=esc(v.channel_url||'#');
+    var dur=esc(v.duration||'');
+    var views=v.views?fmtViews(v.views):'';
+    var date=esc(v.published||'');
+    var cat=esc(v.category||'');
+    var url=esc(v.url||'#');
+    var desc=v.description?esc(v.description.slice(0,120)):'';
+    html+='<div class="v3-item">';
+    html+='<div class="v3-num">'+(i+1)+'</div>';
+    html+='<div class="v3-thumb-wrap"><img class="v3-thumb-img" src="'+thumb+'" alt="" loading="lazy"/>';
+    if(dur) html+='<span class="v3-dur-badge">'+dur+'</span>';
+    html+='</div>';
+    html+='<div class="v3-info">';
+    html+='<a class="v3-title" href="'+url+'" target="_blank" rel="noopener noreferrer">'+title+'</a>';
+    html+='<a class="v3-channel" href="'+chanUrl+'" target="_blank" rel="noopener noreferrer">'+chanName+'</a>';
+    html+='<div class="v3-meta-row">';
+    if(views) html+='<span class="v3-views">'+views+'</span>';
+    if(date) html+='<span class="v3-date">'+date+'</span>';
+    if(cat) html+='<span class="v3-cat-badge">'+cat+'</span>';
+    html+='</div>';
+    if(desc) html+='<div class="v3-desc">'+desc+'</div>';
+    html+='</div></div>';
+  }
+  list.innerHTML=html;
+  sv('v3list',true,'block');
 }
 
 /* ════════════════════════════════
    DESC TOGGLE
 ════════════════════════════════ */
 function toggleDesc(){
-  descExpanded = !descExpanded;
-  document.getElementById('r-desc').classList.toggle('exp', descExpanded);
-  document.getElementById('r-more').textContent = descExpanded ? 'Show less' : 'Read more';
+  descExpanded=!descExpanded;
+  document.getElementById('r-desc').classList.toggle('exp',descExpanded);
+  document.getElementById('r-more').textContent=descExpanded?'Show less':'Read more';
   if(!descExpanded){
-    setTimeout(function(){
-      var c=document.getElementById('rcard0');
-      if(c) c.scrollIntoView({behavior:'smooth',block:'nearest'});
-    }, 50);
+    setTimeout(function(){ var c=document.getElementById('rcard0'); if(c) c.scrollIntoView({behavior:'smooth',block:'nearest'}); },50);
   }
 }
 
@@ -1005,73 +1065,41 @@ function toggleDesc(){
 ════════════════════════════════ */
 function resetVideoPreview(){
   clearTimers();
-  sv('r-play-overlay', true, 'flex');
-  sv('r-countdown-wrap', false);
-  sv('r-yt-wrap', false);
-  var arc = document.getElementById('r-ring-arc');
-  if(arc){ arc.style.transition = 'none'; arc.style.strokeDashoffset = '201'; }
-  var frame = document.getElementById('r-yt-frame');
-  if(frame) frame.src = '';
-  /* restore thumbnail opacity */
-  var img = document.getElementById('r-thumb-img');
-  if(img) img.style.opacity = '1';
+  sv('r-play-overlay',true,'flex'); sv('r-countdown-wrap',false); sv('r-yt-wrap',false);
+  var arc=document.getElementById('r-ring-arc');
+  if(arc){ arc.style.transition='none'; arc.style.strokeDashoffset='201'; }
+  var frame=document.getElementById('r-yt-frame'); if(frame) frame.src='';
+  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='1';
 }
-
-function clearTimers(){
-  if(cdTimer){ clearTimeout(cdTimer); cdTimer=null; }
-  if(cdInterval){ clearInterval(cdInterval); cdInterval=null; }
-}
-
+function clearTimers(){ if(cdTimer){clearTimeout(cdTimer);cdTimer=null;} if(cdInterval){clearInterval(cdInterval);cdInterval=null;} }
 function startPreview(){
   if(!v1VideoId) return;
-  sv('r-play-overlay', false);
-  sv('r-countdown-wrap', true, 'flex');
-  document.getElementById('r-countdown-n').textContent = '5';
-  /* dim thumbnail */
-  var img = document.getElementById('r-thumb-img');
-  if(img) img.style.opacity = '.35';
-  /* animate ring */
-  var arc = document.getElementById('r-ring-arc');
-  arc.style.transition = 'none';
-  arc.style.strokeDashoffset = '201';
-  requestAnimationFrame(function(){ requestAnimationFrame(function(){
-    arc.style.transition = 'stroke-dashoffset 5s linear';
-    arc.style.strokeDashoffset = '0';
-  }); });
-  /* countdown numbers */
-  var secs = 4;
-  cdInterval = setInterval(function(){
-    document.getElementById('r-countdown-n').textContent = String(secs);
-    secs--;
-    if(secs < 0){ clearInterval(cdInterval); cdInterval=null; }
-  }, 1000);
-  /* launch after 5s */
-  cdTimer = setTimeout(function(){ launchVideo(); }, 5000);
+  sv('r-play-overlay',false); sv('r-countdown-wrap',true,'flex');
+  document.getElementById('r-countdown-n').textContent='5';
+  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='.35';
+  var arc=document.getElementById('r-ring-arc');
+  arc.style.transition='none'; arc.style.strokeDashoffset='201';
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ arc.style.transition='stroke-dashoffset 5s linear'; arc.style.strokeDashoffset='0'; }); });
+  var secs=4;
+  cdInterval=setInterval(function(){ document.getElementById('r-countdown-n').textContent=String(secs); secs--; if(secs<0){clearInterval(cdInterval);cdInterval=null;} },1000);
+  cdTimer=setTimeout(function(){ launchVideo(); },5000);
 }
-
 function skipCountdown(){ clearTimers(); launchVideo(); }
-
 function launchVideo(){
-  sv('r-countdown-wrap', false);
-  var img = document.getElementById('r-thumb-img');
+  sv('r-countdown-wrap',false);
+  var img=document.getElementById('r-thumb-img');
   if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
-  var wrap = document.getElementById('r-yt-wrap');
-  wrap.style.display = 'block';
-  /* slight delay so fade plays */
-  setTimeout(function(){
-    document.getElementById('r-yt-frame').src =
-      'https://www.youtube.com/embed/' + v1VideoId +
-      '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
-  }, 120);
+  var wrap=document.getElementById('r-yt-wrap'); wrap.style.display='block';
+  setTimeout(function(){ document.getElementById('r-yt-frame').src='https://www.youtube.com/embed/'+v1VideoId+'?autoplay=1&rel=0&modestbranding=1&playsinline=1'; },120);
 }
 
 /* ════════════════════════════════
    BTN RESET
 ════════════════════════════════ */
 function setBtnDefault(n){
-  var btn=document.getElementById('btn'+n);
+  var btn=document.getElementById('btn'+n); if(!btn) return;
   btn.disabled=false;
-  var isSearch=(n===0||n===3);
+  var isSearch=(n===0||n===3||n===4);
   btn.innerHTML=isSearch
     ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search'
     :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>Fetch';
@@ -1081,14 +1109,14 @@ function setBtnDefault(n){
    FETCH
 ════════════════════════════════ */
 async function fetchEp(n){
-  var btn=document.getElementById('btn'+n);
+  var btn=document.getElementById('btn'+n); if(!btn) return;
   btn.disabled=true;
-  btn.textContent=(n===0||n===3)?'Searching\u2026':'Fetching\u2026';
+  btn.textContent=(n===0||n===3||n===4)?'Searching\u2026':'Fetching\u2026';
 
-  sv('skel'+n,true,'flex');
-  sv('res'+n,false);
+  sv('skel'+n,true,'flex'); sv('res'+n,false);
   if(n===0){ sv('rcard0',false); sv('curl0',false); resetVideoPreview(); }
   if(n===3){ sv('v2card',false); sv('curl3',false); }
+  if(n===4){ sv('v3list',false); sv('curl4',false); }
 
   var url;
   if(n===0){
@@ -1099,6 +1127,10 @@ async function fetchEp(n){
     var q3=document.getElementById('q3').value.trim();
     if(!q3){ setBtnDefault(n); sv('skel'+n,false,'flex'); return; }
     url='/api/v2/q?='+encodeURIComponent(q3);
+  } else if(n===4){
+    var q4=document.getElementById('q4').value.trim();
+    if(!q4){ setBtnDefault(n); sv('skel'+n,false,'flex'); return; }
+    url='/api/v3/q?='+encodeURIComponent(q4);
   } else if(n===1){
     url='/api/uptime';
   } else {
@@ -1118,18 +1150,20 @@ async function fetchEp(n){
     sv('skel'+n,false,'flex');
 
     var statEl=document.getElementById('stat'+n);
-    statEl.textContent=resp.ok?'200 OK':resp.status+' Error';
+    statEl.textContent=resp.ok?'200 OK':(resp.status+' Error');
     statEl.className='ep-status '+(resp.ok?'ok':'err');
 
-    var sms=typeof data==='object'&&data&&typeof data.ms==='number'?data.ms:null;
-    document.getElementById('ms'+n).textContent=sms!==null?(sms+'ms (server)'):(clientMs+'ms');
+    var sms=(typeof data==='object'&&data&&typeof data.ms==='number')?data.ms:null;
+    document.getElementById('ms'+n).textContent=sms!==null?(sms+'ms server'):(clientMs+'ms');
 
     var cacEl=document.getElementById('cac'+n);
     if(cacEl) cacEl.style.display=(typeof data==='object'&&data&&data.cached)?'inline-flex':'none';
 
-    var curlEl=document.getElementById('curl'+n+'-text');
-    if(curlEl) curlEl.textContent=url;
-    if(n===0||n===3) sv('curl'+n, resp.ok, 'flex');
+    showApiCount(n, data);
+
+    var curlTextEl=document.getElementById('curl'+n+'-text');
+    if(curlTextEl) curlTextEl.textContent=url;
+    if(n===0||n===3||n===4) sv('curl'+n,resp.ok,'flex');
 
     document.getElementById('raw'+n).innerHTML=typeof data==='string'?data:hl(rawStore[n]);
     sv('res'+n,true,'block');
@@ -1138,38 +1172,37 @@ async function fetchEp(n){
     if(n===0&&typeof data==='object'&&data&&data.success){
       var info=data.info||{};
       var media=data.media||{};
+      v1VideoId=data.video_id||'';
 
-      /* store videoId for preview */
-      v1VideoId = data.video_id || '';
-
-      /* thumbnail */
       var thumbEl=document.getElementById('r-thumb-img');
-      thumbEl.src=info.thumbnail||'';
-      thumbEl.alt=info.title||'';
-      thumbEl.style.opacity='1';
-      thumbEl.style.transition='opacity .55s ease';
+      thumbEl.src=info.thumbnail||''; thumbEl.alt=info.title||'';
+      thumbEl.style.opacity='1'; thumbEl.style.transition='opacity .55s ease';
 
-      /* show/hide play overlay based on videoId */
-      sv('r-play-overlay', !!v1VideoId, 'flex');
+      sv('r-play-overlay',!!v1VideoId,'flex');
 
       var durEl=document.getElementById('r-dur');
       durEl.textContent=info.duration||'';
       durEl.style.display=info.duration?'inline-block':'none';
 
       var cbEl=document.getElementById('r-cached-b');
-      cbEl.textContent='Cached';
-      cbEl.style.display=data.cached?'inline-block':'none';
+      cbEl.textContent='Cached'; cbEl.style.display=data.cached?'inline-block':'none';
 
       document.getElementById('r-title').textContent=info.title||data.video_id||'';
       var aEl=document.getElementById('r-author');
-      aEl.textContent=info.author||'';
-      aEl.href=info.channel_url||'#';
+      aEl.textContent=info.author||''; aEl.href=info.channel_url||'#';
 
       var stats=[];
       var v=fmtViews(info.views);
       if(v) stats.push('<span class="r-stat">&#x1F441; '+v+'</span>');
       if(info.published) stats.push('<span class="r-stat">&#x1F4C5; '+info.published+'</span>');
-      document.getElementById('r-stats').innerHTML=stats.join('');
+      document.getElementById('r-stats').innerHTML='<span class="cat-badge" id="r-cat"></span>'+stats.join('');
+
+      /* category badge */
+      var catEl=document.getElementById('r-cat');
+      if(catEl&&data.category){
+        catEl.textContent=data.category;
+        catEl.style.display='inline-flex';
+      }
 
       if(info.description){
         document.getElementById('r-desc').textContent=info.description;
@@ -1181,8 +1214,7 @@ async function fetchEp(n){
         sv('r-desc-wrap',false);
       }
 
-      var dlRow=document.getElementById('r-dl');
-      dlRow.innerHTML='';
+      var dlRow=document.getElementById('r-dl'); dlRow.innerHTML='';
       if(media.mp4&&media.mp4.url){
         var a4=document.createElement('a');
         a4.href=media.mp4.url; a4.target='_blank'; a4.rel='noopener noreferrer';
@@ -1201,8 +1233,7 @@ async function fetchEp(n){
     /* ── V2 quick card ── */
     if(n===3&&typeof data==='object'&&data&&data.credit){
       var media3=data.media||{};
-      var dlRow3=document.getElementById('v2-dl');
-      dlRow3.innerHTML='';
+      var dlRow3=document.getElementById('v2-dl'); dlRow3.innerHTML='';
       var hasLink=false;
       if(media3.mp4&&typeof media3.mp4==='string'){
         var b4=document.createElement('a');
@@ -1218,6 +1249,11 @@ async function fetchEp(n){
       }
       if(!hasLink) dlRow3.innerHTML='<span class="dl-none">No download links available</span>';
       sv('v2card',true,'block');
+    }
+
+    /* ── V3 search results ── */
+    if(n===4&&typeof data==='object'&&data&&data.results){
+      renderV3List(data.results);
     }
 
   }catch(e){

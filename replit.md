@@ -1,132 +1,70 @@
-# YouTube Downloader API
+# TubeFetch — YouTube Downloader API
 
-REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links.
+REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, metadata, and top search results.
+
+## Current Version: 1.0.8
 
 ## Stack
 
 - **Monorepo**: pnpm workspaces
 - **Node.js**: 24
 - **Framework**: Express 5
-- **Search**: `yt-search` — resolves title queries to a YouTube video ID and fetches real-time metadata
+- **Search**: `yt-search` — resolves title queries to YouTube video IDs and metadata
 - **Downloads**: `nayan-media-downloaders` — returns direct MP4 (HD) and MP3 download URLs
 - **Logging**: pino + pino-http (pretty in dev, JSON in production)
-- **Build**: esbuild (CJS/ESM bundle via `build.mjs`)
+- **Build**: esbuild (via `build.mjs`)
 - **TypeScript**: 5.9, strict
 
-## API
+## Key Source Files
+
+- `artifacts/api-server/src/routes/home.ts` — server-rendered HTML frontend
+- `artifacts/api-server/src/routes/download.ts` — v1 endpoint (full metadata + downloads)
+- `artifacts/api-server/src/routes/download-v2.ts` — v2 endpoint (fast, links only)
+- `artifacts/api-server/src/routes/download-v3.ts` — v3 endpoint (top 10 search results)
+- `artifacts/api-server/src/routes/uptime.ts` — uptime/status endpoint
+- `artifacts/api-server/src/routes/health.ts` — health check endpoint
+- `artifacts/api-server/src/routes/stats.ts` — global ApiCount stats endpoint
+- `artifacts/api-server/src/lib/counter.ts` — global API call counter singleton
+- `artifacts/api-server/src/lib/category.ts` — YouTube content category inference
+- `artifacts/api-server/src/lib/cache.ts` — TtlCache (90s in-memory)
+- `artifacts/api-server/src/lib/version.ts` — VERSION constant
+
+## API Endpoints
 
 ### `GET /api/v1/q?=(url or title)`
-
-Full metadata endpoint. Returns video info, thumbnail, and download links.
-
-**Examples:**
-```
-/api/v1/q?=lay me down sam smith
-/api/v1/q?=https://youtu.be/dQw4w9WgXcQ
-/api/v1/q?=https://www.youtube.com/watch?v=dQw4w9WgXcQ
-```
-
-**Response:**
-```json
-{
-  "version": "2.0.0",
-  "success": true,
-  "creditTo": "MJL",
-  "cached": false,
-  "ms": 1200,
-  "video_id": "dQw4w9WgXcQ",
-  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  "info": {
-    "title": "...",
-    "author": "...",
-    "channel_url": "...",
-    "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-    "duration": "3:33",
-    "duration_seconds": 213,
-    "views": 1768872612,
-    "published": "16 years ago",
-    "description": "..."
-  },
-  "media": {
-    "mp4": { "url": "https://...", "quality": "HD" },
-    "mp3": { "url": "https://..." }
-  }
-}
-```
+Full metadata + download links. Response includes `ApiCount`, `category`, `cached`, `ms`.
 
 ### `GET /api/v2/q?=(url or title)`
+Fast links-only endpoint. Returns `credit`, `version`, `ApiCount`, `ms`, `media.mp4`, `media.mp3`.
 
-Fast endpoint. Skips full metadata lookup — only returns download links.
-No `title`, `video_id`, or `url` fields. Optimized for speed.
+### `GET /api/v3/q?=(search query)`
+Returns top 10 YouTube search results. Each result includes: `rank`, `video_id`, `url`, `title`, `description`, `channel_name`, `channel_url`, `published`, `duration`, `thumbnail`, `views`, `category`. Response includes `ApiCount` and `ms`.
 
-**Response:**
-```json
-{
-  "credit": "MJL",
-  "version": "2.0.0",
-  "ms": 900,
-  "media": {
-    "mp4": "https://...",
-    "mp3": "https://..."
-  }
-}
-```
+### `GET /api/stats`
+Returns total API call count: `{ version, creditTo, ApiCount, timestamp }`. Does NOT increment the counter.
+
+### `GET /api/uptime`
+Server uptime. Includes `ApiCount`.
 
 ### `GET /api/healthz`
+Liveness probe. Includes `ApiCount`.
 
-Returns `{ "status": "ok" }`.
+## ApiCount
 
-## Thumbnail Fix (v1)
+Every API request (v1, v2, v3, uptime, healthz) increments a global in-memory counter stored in `lib/counter.ts`. The current count is returned in every response as `ApiCount`. The web UI polls `/api/stats` every 5 seconds to show the live total in the hero stats bar.
 
-Thumbnail resolution uses a multi-source fallback chain:
-1. `yt-search` thumbnail field
-2. `yt-search` image field
-3. `nayan-media-downloaders` thumbnail field
-4. Constructed fallback: `https://i.ytimg.com/vi/{videoId}/hqdefault.jpg`
+## Categories
 
-This guarantees a thumbnail URL is always present in the response.
+Content is auto-classified into: Music, Gaming, Education, News & Politics, Comedy, Sports, Film & Entertainment, Science & Technology, Travel & Vlogs, Food & Cooking, Health & Fitness, Beauty & Fashion, Entertainment (default).
 
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run typecheck:libs` — build/emit composite lib declarations
-- `pnpm --filter @workspace/api-server run dev` — run API server in dev mode
+- `pnpm --filter @workspace/api-server run dev` — run API server in dev mode (port 8080)
 - `pnpm --filter @workspace/api-server run build` — production esbuild bundle
 
 ## Deployment
 
-### Replit (dev)
-Port: `8080` (Replit-supported port)
-```
-PORT=8080 pnpm --filter @workspace/api-server run dev
-```
-
-### Render
-- **Build:** `pnpm install && pnpm --filter @workspace/api-server run build`
-- **Start:** `node --enable-source-maps artifacts/api-server/dist/index.mjs`
-- Port: `10000` (set automatically by Render via `PORT` env var)
-- Health check: `GET /api/healthz`
-
-### Vercel
-1. Connect your GitHub repo to [Vercel](https://vercel.com)
-2. Vercel reads `vercel.json` automatically
-3. Install command: `pnpm install`
-4. Build command: `pnpm run typecheck:libs`
-5. Serverless entry: `artifacts/api-server/api/index.ts`
-
-### Self-hosted / Docker
-```bash
-pnpm install
-pnpm --filter @workspace/api-server run build
-NODE_ENV=production PORT=8080 node --enable-source-maps artifacts/api-server/dist/index.mjs
-```
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NODE_ENV` | Yes | — | Set to `production` for JSON logs |
-| `PORT` | Yes | — | Port to listen on |
-| `LOG_LEVEL` | No | `info` | Pino log level |
-
-No database or external API keys required.
+- **Dev (Replit):** `PORT=8080 pnpm --filter @workspace/api-server run dev`
+- **Render:** Build: `pnpm install && pnpm --filter @workspace/api-server run build` | Start: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
+- **Health check:** `GET /api/healthz`

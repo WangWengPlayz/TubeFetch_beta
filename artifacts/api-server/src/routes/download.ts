@@ -3,6 +3,8 @@ import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
 import { VERSION } from "../lib/version";
+import { increment } from "../lib/counter";
+import { inferCategory } from "../lib/category";
 
 const _require = createRequire(import.meta.url);
 const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
@@ -13,10 +15,12 @@ interface VideoResponse {
   version: string;
   success: true;
   creditTo: "MJL";
+  ApiCount: number;
   cached: boolean;
   ms: number;
   video_id: string;
   url: string;
+  category: string;
   info: Record<string, unknown>;
   media: {
     mp4: { url: string; quality: "HD" } | null;
@@ -24,7 +28,7 @@ interface VideoResponse {
   };
 }
 
-const cache = new TtlCache<Omit<VideoResponse, "ms" | "cached">>(90_000);
+const cache = new TtlCache<Omit<VideoResponse, "ms" | "cached" | "ApiCount">>(90_000);
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -62,7 +66,6 @@ function resolveThumbnail(
   info: yts.VideoResult | null,
   dlThumbnail?: string,
 ): string {
-  // Priority: yts thumbnail → yts image → nayan thumbnail → constructed hqdefault
   const fromYts = info?.thumbnail || info?.image || null;
   if (fromYts) return fromYts;
   if (dlThumbnail) return dlThumbnail;
@@ -71,6 +74,7 @@ function resolveThumbnail(
 
 router.get("/v1/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
+  const ApiCount = increment();
   const query = req.query[""] as string | undefined;
 
   if (!query || !query.trim()) {
@@ -78,6 +82,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
       version: VERSION,
       success: false,
       creditTo: "MJL",
+      ApiCount,
       ms: Date.now() - t0,
       error: "Missing query.",
       usage: "/api/v1/q?=(YouTube URL or song/video title)",
@@ -103,9 +108,9 @@ router.get("/v1/q", async (req: Request, res: Response) => {
           version: VERSION,
           success: false,
           creditTo: "MJL",
+          ApiCount,
           ms: Date.now() - t0,
-          error:
-            "Could not extract a YouTube video ID from this URL. Make sure it is a valid YouTube link.",
+          error: "Could not extract a YouTube video ID from this URL.",
           input,
         });
         return;
@@ -119,6 +124,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
           version: VERSION,
           success: false,
           creditTo: "MJL",
+          ApiCount,
           ms: Date.now() - t0,
           error: "No YouTube results found for this query.",
           query: input,
@@ -132,7 +138,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
     const cached = cache.get(videoId);
     if (cached) {
       res.setHeader("Cache-Control", "public, max-age=90");
-      res.json({ ...cached, cached: true, ms: Date.now() - t0 });
+      res.json({ ...cached, ApiCount, cached: true, ms: Date.now() - t0 });
       return;
     }
 
@@ -146,8 +152,12 @@ router.get("/v1/q", async (req: Request, res: Response) => {
     const dlData = (dl?.status ? dl.data : null) ?? null;
 
     const { name: authorName, url: channelUrl } = resolveAuthor(info?.author);
-
     const thumbnail = resolveThumbnail(videoId, info, dlData?.thumbnail);
+    const category = inferCategory(
+      info?.keywords ?? [],
+      info?.title ?? dlData?.title ?? "",
+      info?.description ?? "",
+    );
 
     const rawInfo: Record<string, unknown> = {
       title:            info?.title ?? dlData?.title ?? null,
@@ -166,12 +176,13 @@ router.get("/v1/q", async (req: Request, res: Response) => {
     const mp4Url = dlData?.video ?? dlData?.high ?? null;
     const mp3Url = dlData?.audio ?? dlData?.low ?? null;
 
-    const payload: Omit<VideoResponse, "ms" | "cached"> = {
+    const payload: Omit<VideoResponse, "ms" | "cached" | "ApiCount"> = {
       version: VERSION,
       success: true,
       creditTo: "MJL",
       video_id: videoId,
       url: youtubeUrl,
+      category,
       info: clean(rawInfo),
       media: {
         mp4: mp4Url ? { url: mp4Url, quality: "HD" } : null,
@@ -181,7 +192,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
 
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "public, max-age=90");
-    res.json({ ...payload, cached: false, ms: Date.now() - t0 });
+    res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "YouTube download error");
@@ -189,6 +200,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
       version: VERSION,
       success: false,
       creditTo: "MJL",
+      ApiCount,
       ms: Date.now() - t0,
       error: message,
       input,

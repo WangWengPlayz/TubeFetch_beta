@@ -3,6 +3,7 @@ import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
 import { VERSION } from "../lib/version";
+import { increment } from "../lib/counter";
 
 const _require = createRequire(import.meta.url);
 const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
@@ -12,6 +13,7 @@ const router: IRouter = Router();
 interface V2Response {
   credit: "MJL";
   version: string;
+  ApiCount: number;
   ms: number;
   media: {
     mp4: string | null;
@@ -19,7 +21,7 @@ interface V2Response {
   };
 }
 
-const cache = new TtlCache<Omit<V2Response, "ms">>(90_000);
+const cache = new TtlCache<Omit<V2Response, "ms" | "ApiCount">>(90_000);
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -35,12 +37,14 @@ function isUrl(input: string): boolean {
 
 router.get("/v2/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
+  const ApiCount = increment();
   const query = req.query[""] as string | undefined;
 
   if (!query || !query.trim()) {
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
+      ApiCount,
       ms: Date.now() - t0,
       error: "Missing query.",
       usage: "/api/v2/q?=(YouTube URL or title)",
@@ -60,6 +64,7 @@ router.get("/v2/q", async (req: Request, res: Response) => {
         res.status(400).json({
           credit: "MJL",
           version: VERSION,
+          ApiCount,
           ms: Date.now() - t0,
           error: "Could not extract a YouTube video ID from this URL.",
           input,
@@ -74,6 +79,7 @@ router.get("/v2/q", async (req: Request, res: Response) => {
         res.status(404).json({
           credit: "MJL",
           version: VERSION,
+          ApiCount,
           ms: Date.now() - t0,
           error: "No YouTube results found for this query.",
           query: input,
@@ -87,7 +93,7 @@ router.get("/v2/q", async (req: Request, res: Response) => {
     const hit = cache.get(videoId);
     if (hit) {
       res.setHeader("Cache-Control", "public, max-age=90");
-      res.json({ ...hit, ms: Date.now() - t0 });
+      res.json({ ...hit, ApiCount, ms: Date.now() - t0 });
       return;
     }
 
@@ -97,7 +103,7 @@ router.get("/v2/q", async (req: Request, res: Response) => {
     const mp4Url = dlData?.video ?? dlData?.high ?? null;
     const mp3Url = dlData?.audio ?? dlData?.low ?? null;
 
-    const payload: Omit<V2Response, "ms"> = {
+    const payload: Omit<V2Response, "ms" | "ApiCount"> = {
       credit: "MJL",
       version: VERSION,
       media: {
@@ -108,13 +114,14 @@ router.get("/v2/q", async (req: Request, res: Response) => {
 
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "public, max-age=90");
-    res.json({ ...payload, ms: Date.now() - t0 });
+    res.json({ ...payload, ApiCount, ms: Date.now() - t0 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "v2 YouTube download error");
     res.status(500).json({
       credit: "MJL",
       version: VERSION,
+      ApiCount,
       ms: Date.now() - t0,
       error: message,
       input,
