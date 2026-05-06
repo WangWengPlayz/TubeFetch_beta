@@ -10,6 +10,11 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     tag: "current",
     notes: [
       "V1 result card: video preview now full-width 16:9 — no longer a narrow side column",
+      "V1 Preview plays YouTube via the IFrame Player API — reliable autoplay, no CORS issues",
+      "Terms & Conditions popup on first visit — Decline redirects to google.com",
+      "Open Graph & Twitter Card meta tags — rich link previews on Messenger, WhatsApp, Discord etc.",
+      "Favicon added — tab icon now shows the TubeFetch play button logo",
+      "Build: mockup-sandbox excluded from production typecheck and build",
     ],
   },
   {
@@ -136,7 +141,7 @@ const FAQS: { q: string; a: string }[] = [
   },
 ];
 
-function buildHtml(version: string): string {
+function buildHtml(version: string, baseUrl: string): string {
   const clItems = CHANGELOG.map((e) => {
     const tagHtml =
       e.tag === "current"
@@ -171,6 +176,23 @@ function buildHtml(version: string): string {
   <meta name="googlebot" content="noindex,nofollow"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <title>TubeFetch — MJL</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="shortcut icon" href="/favicon.svg"/>
+  <!-- Open Graph -->
+  <meta property="og:type" content="website"/>
+  <meta property="og:site_name" content="TubeFetch"/>
+  <meta property="og:title" content="TubeFetch — YouTube Download API"/>
+  <meta property="og:description" content="Free REST API — pass any YouTube URL or title and get direct MP4 &amp; MP3 download links. No API key required."/>
+  <meta property="og:image" content="${baseUrl}/og-image.svg"/>
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta property="og:image:alt" content="TubeFetch — YouTube Download API"/>
+  <meta property="og:url" content="${baseUrl}/"/>
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="TubeFetch — YouTube Download API"/>
+  <meta name="twitter:description" content="Free REST API — pass any YouTube URL or title and get direct MP4 &amp; MP3 download links. No API key required."/>
+  <meta name="twitter:image" content="${baseUrl}/og-image.svg"/>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html{scroll-behavior:smooth}
@@ -1657,7 +1679,8 @@ function loadStatsData() {
 </html>`;
 }
 
-router.get("/", (_req, res) => {
+router.get("/", (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -1669,7 +1692,67 @@ router.get("/", (_req, res) => {
     "Content-Security-Policy",
     "default-src 'self'; script-src 'unsafe-inline' https://www.youtube.com https://www.youtube-nocookie.com; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
   );
-  res.send(buildHtml(VERSION));
+  res.send(buildHtml(VERSION, baseUrl));
+});
+
+router.get("/favicon.svg", (_req, res) => {
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#CC0000"/>
+      <stop offset="100%" stop-color="#FF0000"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#g)"/>
+  <polygon points="12,9 12,23 24,16" fill="white"/>
+</svg>`);
+});
+
+router.get("/favicon.ico", (_req, res) => {
+  res.redirect(301, "/favicon.svg");
+});
+
+router.get("/og-image.svg", (_req, res) => {
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.send(`<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F0F0F"/>
+      <stop offset="100%" stop-color="#1a0000"/>
+    </linearGradient>
+    <linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#CC0000"/>
+      <stop offset="100%" stop-color="#FF0000"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <ellipse cx="600" cy="220" rx="480" ry="220" fill="rgba(136,0,0,0.22)"/>
+  <rect x="1050" y="30" width="120" height="12" rx="6" fill="rgba(255,255,255,0.04)"/>
+  <rect x="30" y="30" width="80" height="12" rx="6" fill="rgba(255,255,255,0.04)"/>
+  <!-- Icon -->
+  <rect x="524" y="120" width="152" height="152" rx="36" fill="url(#rg)"/>
+  <filter id="glow"><feGaussianBlur stdDeviation="18" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <rect x="524" y="120" width="152" height="152" rx="36" fill="url(#rg)" filter="url(#glow)" opacity="0.5"/>
+  <polygon points="572,152 572,240 648,196" fill="white"/>
+  <!-- Title -->
+  <text x="600" y="338" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="78" fill="#F1F1F1" text-anchor="middle" letter-spacing="-3">TubeFetch</text>
+  <!-- Red TF accent under title -->
+  <rect x="506" y="350" width="188" height="4" rx="2" fill="url(#rg)" opacity="0.6"/>
+  <!-- Subtitle -->
+  <text x="600" y="400" font-family="Arial,sans-serif" font-weight="400" font-size="28" fill="#555555" text-anchor="middle">YouTube Download API &nbsp;·&nbsp; No API Key Required</text>
+  <!-- Endpoint badges -->
+  <rect x="352" y="440" width="148" height="44" rx="22" fill="rgba(74,222,128,0.07)" stroke="rgba(74,222,128,0.18)" stroke-width="1.5"/>
+  <text x="426" y="467" font-family="Arial,sans-serif" font-size="20" fill="#4ade80" text-anchor="middle" font-weight="700">GET /api/v1</text>
+  <rect x="526" y="440" width="148" height="44" rx="22" fill="rgba(96,165,250,0.07)" stroke="rgba(96,165,250,0.18)" stroke-width="1.5"/>
+  <text x="600" y="467" font-family="Arial,sans-serif" font-size="20" fill="#60a5fa" text-anchor="middle" font-weight="700">GET /api/v2</text>
+  <rect x="700" y="440" width="148" height="44" rx="22" fill="rgba(251,191,36,0.07)" stroke="rgba(251,191,36,0.18)" stroke-width="1.5"/>
+  <text x="774" y="467" font-family="Arial,sans-serif" font-size="20" fill="#fbbf24" text-anchor="middle" font-weight="700">GET /api/v3</text>
+  <!-- Footer -->
+  <text x="600" y="570" font-family="Arial,sans-serif" font-size="19" fill="#2a2a2a" text-anchor="middle" letter-spacing="1">by MJL &nbsp;·&nbsp; v${VERSION} &nbsp;·&nbsp; tubefetch</text>
+</svg>`);
 });
 
 export default router;
