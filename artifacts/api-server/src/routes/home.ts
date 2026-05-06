@@ -242,6 +242,46 @@ function buildHtml(version: string): string {
     .i-bar{height:100%;width:0;background:linear-gradient(90deg,#CC0000,#FF4444);border-radius:2px;box-shadow:0 0 8px #FF0000;transition:width 2.2s cubic-bezier(.4,0,.2,1)}
     .i-ver{color:#2a2a2a;font-size:.65rem;font-family:monospace;margin-top:10px;animation:fade-up .5s ease both;animation-delay:.7s}
 
+    /* ── TERMS OVERLAY ── */
+    #terms-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;padding:16px}
+    #terms-overlay.show{display:flex;animation:fade-in-ov .4s ease both}
+    #terms-overlay.out{display:flex;animation:fade-out-ov .3s ease forwards}
+    @keyframes fade-in-ov{from{opacity:0}to{opacity:1}}
+    @keyframes fade-out-ov{from{opacity:1}to{opacity:0}}
+    .terms-modal{background:rgba(16,16,16,.99);border:1px solid rgba(255,255,255,.1);border-radius:20px;max-width:460px;width:100%;box-shadow:0 40px 80px rgba(0,0,0,.85),0 0 0 1px rgba(255,0,0,.07);overflow:hidden;animation:modal-up .4s cubic-bezier(.34,1.2,.64,1) both;animation-delay:.1s}
+    @keyframes modal-up{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+    .terms-head{padding:26px 24px 0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+    .terms-icon{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#CC0000,#FF0000);display:flex;align-items:center;justify-content:center;box-shadow:0 0 28px rgba(255,0,0,.35);flex-shrink:0}
+    .terms-icon svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+    .terms-title{font-size:1.05rem;font-weight:900;color:#F1F1F1;letter-spacing:-.3px}
+    .terms-sub{font-size:.67rem;color:#444;font-weight:700;letter-spacing:1.2px;text-transform:uppercase}
+    .terms-body{padding:18px 24px;max-height:240px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#2a2a2a transparent}
+    .terms-body::-webkit-scrollbar{width:3px}
+    .terms-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:2px}
+    .terms-section{margin-bottom:15px}
+    .terms-section:last-child{margin-bottom:0}
+    .terms-section-title{font-size:.63rem;font-weight:800;color:#FF4444;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+    .terms-text{font-size:.74rem;color:#777;line-height:1.7}
+    .terms-text strong{color:#AAAAAA;font-weight:700}
+    .terms-footer{padding:14px 24px 22px;border-top:1px solid rgba(255,255,255,.06)}
+    .terms-notice{font-size:.63rem;color:#333;text-align:center;line-height:1.55;margin-bottom:12px}
+    .terms-btns{display:flex;gap:8px}
+    .terms-accept{flex:1;background:linear-gradient(135deg,#CC0000,#FF0000);color:#fff;border:none;padding:12px;border-radius:10px;font-size:.83rem;font-weight:700;cursor:pointer;transition:all .18s;box-shadow:0 2px 12px rgba(255,0,0,.25);font-family:inherit}
+    .terms-accept:hover{background:linear-gradient(135deg,#BB0000,#EE0000);transform:translateY(-1px);box-shadow:0 6px 20px rgba(255,0,0,.35)}
+    .terms-decline{flex:0 0 auto;background:rgba(255,255,255,.04);color:#444;border:1px solid rgba(255,255,255,.07);padding:12px 16px;border-radius:10px;font-size:.83rem;font-weight:600;cursor:pointer;transition:all .18s;font-family:inherit}
+    .terms-decline:hover{background:rgba(255,255,255,.08);color:#777;border-color:rgba(255,255,255,.12)}
+    /* ── DECLINE OVERLAY ── */
+    #decline-overlay{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.95);backdrop-filter:blur(16px);display:none;align-items:center;justify-content:center;padding:16px}
+    #decline-overlay.show{display:flex;animation:fade-in-ov .3s ease both}
+    .decline-modal{background:rgba(16,16,16,.99);border:1px solid rgba(255,255,255,.07);border-radius:20px;max-width:340px;width:100%;padding:36px 28px;text-align:center;box-shadow:0 40px 80px rgba(0,0,0,.9);animation:modal-up .35s cubic-bezier(.34,1.2,.64,1) both}
+    .decline-icon{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+    .decline-icon svg{width:20px;height:20px;stroke:#444;fill:none;stroke-width:2;stroke-linecap:round}
+    .decline-title{font-size:.95rem;font-weight:800;color:#F1F1F1;margin-bottom:9px}
+    .decline-msg{font-size:.76rem;color:#444;line-height:1.65;margin-bottom:22px}
+    .decline-bar-track{width:100%;height:2px;background:#1a1a1a;border-radius:2px;overflow:hidden}
+    .decline-bar{height:100%;width:0;background:linear-gradient(90deg,#2a2a2a,#444);border-radius:2px;transition:width 3s linear}
+    .decline-redirect{font-size:.63rem;color:#2a2a2a;margin-top:8px;font-family:monospace;letter-spacing:.5px}
+
     /* ── TOPBAR ── */
     .topbar{position:sticky;top:0;z-index:100;height:56px;background:rgba(10,10,10,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:space-between;padding:0 20px}
     .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,0,0,.25),transparent)}
@@ -586,6 +626,57 @@ function buildHtml(version: string): string {
     <div class="i-sub">TF &middot; by MJL</div>
     <div class="i-bar-track"><div class="i-bar" id="i-bar"></div></div>
     <div class="i-ver">v${version}</div>
+  </div>
+</div>
+
+<!-- ── TERMS ── -->
+<div id="terms-overlay">
+  <div class="terms-modal">
+    <div class="terms-head">
+      <div class="terms-icon">
+        <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/></svg>
+      </div>
+      <div class="terms-title">Terms &amp; Conditions</div>
+      <div class="terms-sub">Please read before continuing</div>
+    </div>
+    <div class="terms-body">
+      <div class="terms-section">
+        <div class="terms-section-title">&#xa9; Copyright Disclaimer</div>
+        <div class="terms-text">All video and audio content accessible through TubeFetch is the <strong>exclusive property of the respective content creators, rights holders, and YouTube / Google LLC.</strong> TubeFetch does not host, store, or redistribute any media. All rights remain with their respective owners.</div>
+      </div>
+      <div class="terms-section">
+        <div class="terms-section-title">No Affiliation with YouTube</div>
+        <div class="terms-text">TubeFetch is an <strong>independent developer tool</strong> and is in no way affiliated with, endorsed by, or officially connected to <strong>YouTube, Google LLC,</strong> or any of their subsidiaries or partners. <em>YouTube</em> is a registered trademark of Google LLC.</div>
+      </div>
+      <div class="terms-section">
+        <div class="terms-section-title">Permitted Use Only</div>
+        <div class="terms-text">This tool is provided strictly for <strong>personal and educational use.</strong> By proceeding you agree to use TubeFetch in full compliance with <strong>YouTube&rsquo;s Terms of Service</strong> and all applicable copyright laws. Reproducing or distributing copyrighted content without authorisation is <strong>prohibited.</strong></div>
+      </div>
+      <div class="terms-section">
+        <div class="terms-section-title">Limitation of Liability</div>
+        <div class="terms-text">The developer (MJL) accepts <strong>no liability</strong> for any misuse, copyright infringement, or legal consequences arising from use of this service. <strong>Use entirely at your own risk.</strong></div>
+      </div>
+    </div>
+    <div class="terms-footer">
+      <div class="terms-notice">By clicking <strong style="color:#777">Accept &amp; Continue</strong> you confirm you have read and agree to these terms.</div>
+      <div class="terms-btns">
+        <button class="terms-decline" onclick="declineTerms()">Decline</button>
+        <button class="terms-accept" onclick="acceptTerms()">Accept &amp; Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── DECLINE ── -->
+<div id="decline-overlay">
+  <div class="decline-modal">
+    <div class="decline-icon">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>
+    <div class="decline-title">We respect your decision.</div>
+    <div class="decline-msg">Thank you for your honesty. We&rsquo;re unable to let you proceed without accepting our terms. You will be redirected away from this page shortly.</div>
+    <div class="decline-bar-track"><div class="decline-bar" id="decline-bar"></div></div>
+    <div class="decline-redirect" id="decline-redirect">Redirecting&hellip;</div>
   </div>
 </div>
 
@@ -935,9 +1026,38 @@ function buildHtml(version: string): string {
   }, 600);
   setTimeout(function(){
     intro.classList.add('out');
-    setTimeout(function(){ intro.style.display = 'none'; initParticles(); initReveal(); fetchStats(); }, 600);
+    setTimeout(function(){ intro.style.display = 'none'; showTerms(); }, 600);
   }, 2700);
 })();
+
+/* ════════════════════════════════
+   TERMS
+════════════════════════════════ */
+function showTerms(){
+  var o=document.getElementById('terms-overlay');
+  o.classList.add('show');
+}
+function acceptTerms(){
+  var o=document.getElementById('terms-overlay');
+  o.classList.remove('show'); o.classList.add('out');
+  setTimeout(function(){ o.style.display='none'; o.classList.remove('out'); initParticles(); initReveal(); fetchStats(); }, 300);
+}
+function declineTerms(){
+  var o=document.getElementById('terms-overlay');
+  o.classList.remove('show'); o.style.display='none';
+  var d=document.getElementById('decline-overlay');
+  d.classList.add('show');
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){
+    var b=document.getElementById('decline-bar'); if(b) b.style.width='100%';
+  }); });
+  var secs=3;
+  var ri=setInterval(function(){
+    secs--;
+    var el=document.getElementById('decline-redirect');
+    if(el) el.textContent='Redirecting in '+secs+'s\u2026';
+    if(secs<=0){ clearInterval(ri); window.location.href='https://www.google.com'; }
+  },1000);
+}
 
 /* ════════════════════════════════
    LIVE STATS
