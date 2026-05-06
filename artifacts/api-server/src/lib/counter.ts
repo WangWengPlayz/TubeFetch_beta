@@ -1,79 +1,133 @@
-import { MongoClient } from "mongodb";
+import { MongoClient, Collection } from "mongodb";
 
-let _success = 0;
-let _error = 0;
+type MongoState = "idle" | "connecting" | "connected" | "no-uri" | "failed";
 
-let client: MongoClient | null = null;
-let dbReady = false;
-
-async function getCollection() {
-  if (!dbReady) {
-    const uri = process.env["MONGODB_URI"];
-    if (!uri) return null;
-    try {
-      client = new MongoClient(uri, { serverSelectionTimeoutMS: 4000 });
-      await client.connect();
-      dbReady = true;
-    } catch {
-      client = null;
-      return null;
-    }
-  }
-  if (!client) return null;
-  return client.db("tubefetch").collection<{ _id: string; value: number }>("counters");
+interface CounterDoc {
+  _id: string;
+  value: number;
+  successCount: number;
+  errorCount: number;
 }
 
-async function mongoIncrement(): Promise<number> {
+let _state: MongoState = "idle";
+let _col: Collection<CounterDoc> | null = null;
+let _connectPromise: Promise<void> | null = null;
+
+let _localTotal = 0;
+let _localSuccess = 0;
+let _localError = 0;
+
+async function doConnect(): Promise<void> {
+  const uri = (process.env["MONGODB_URI"] ?? "").trim();
+
+  if (!uri) {
+    _state = "no-uri";
+    console.log("[TubeFetch] ⚠  MONGODB_URI not set — counts are in-memory only (reset on restart)");
+    return;
+  }
+
+  _state = "connecting";
+  console.log("[TubeFetch] 🔄 Connecting to MongoDB...");
+
   try {
-    const col = await getCollection();
-    if (!col) return 0;
-    const doc = await col.findOneAndUpdate(
+    const client = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+
+    await client.connect();
+
+    const col = client.db("tubefetch").collection<CounterDoc>("counters");
+
+    await col.updateOne(
+      { _id: "apiCount" },
+      { $setOnInsert: { value: 0, successCount: 0, errorCount: 0 } },
+      { upsert: true },
+    );
+
+    await col.updateOne(
+      { _id: "apiCount", successCount: { $exists: false } },
+      { $set: { successCount: 0, errorCount: 0 } },
+    );
+
+    _col = col;
+    _state = "connected";
+    console.log("[TubeFetch] ✅ MongoDB connected — total, success & error counts are now persistent");
+  } catch (err) {
+    _state = "failed";
+    _col = null;
+    console.error("[TubeFetch] ❌ MongoDB connection failed:", (err as Error).message);
+    console.log("[TubeFetch] ⚠  Falling back to in-memory counts (not persistent)");
+  }
+}
+
+function ensureConnected(): Promise<void> {
+  if (_state === "idle") {
+    _connectPromise = doConnect();
+  }
+  return _connectPromise ?? Promise.resolve();
+}
+
+ensureConnected();
+
+export async function increment(): Promise<number> {
+  _localTotal++;
+  await ensureConnected();
+  if (!_col) return _localTotal;
+  try {
+    const doc = await _col.findOneAndUpdate(
       { _id: "apiCount" },
       { $inc: { value: 1 } },
       { upsert: true, returnDocument: "after" },
     );
-    return doc?.value ?? 1;
+    return doc?.value ?? _localTotal;
   } catch {
-    return 0;
+    return _localTotal;
   }
-}
-
-async function mongoGetCount(): Promise<number> {
-  try {
-    const col = await getCollection();
-    if (!col) return 0;
-    const doc = await col.findOne({ _id: "apiCount" });
-    return doc?.value ?? 0;
-  } catch {
-    return 0;
-  }
-}
-
-let _localCount = 0;
-
-export async function increment(): Promise<number> {
-  _localCount++;
-  const remote = await mongoIncrement();
-  return remote > 0 ? remote : _localCount;
 }
 
 export function recordSuccess(): void {
-  _success++;
+  _localSuccess++;
+  if (!_col) return;
+  _col
+    .updateOne({ _id: "apiCount" }, { $inc: { successCount: 1 } }, { upsert: true })
+    .catch(() => {});
 }
 
 export function recordError(): void {
-  _error++;
+  _localError++;
+  if (!_col) return;
+  _col
+    .updateOne({ _id: "apiCount" }, { $inc: { errorCount: 1 } }, { upsert: true })
+    .catch(() => {});
+}
+
+export async function getAllCounts(): Promise<{
+  total: number;
+  successCount: number;
+  errorCount: number;
+}> {
+  await ensureConnected();
+  if (!_col) {
+    return { total: _localTotal, successCount: _localSuccess, errorCount: _localError };
+  }
+  try {
+    const doc = await _col.findOne({ _id: "apiCount" });
+    return {
+      total:        doc?.value        ?? _localTotal,
+      successCount: doc?.successCount ?? _localSuccess,
+      errorCount:   doc?.errorCount   ?? _localError,
+    };
+  } catch {
+    return { total: _localTotal, successCount: _localSuccess, errorCount: _localError };
+  }
 }
 
 export async function getCount(): Promise<number> {
-  const remote = await mongoGetCount();
-  return remote > 0 ? remote : _localCount;
+  const { total } = await getAllCounts();
+  return total;
 }
 
-export function getSuccess(): number {
-  return _success;
-}
-
-export function getError(): number {
-  return _error;
-}
+export function getSuccess(): number { return _localSuccess; }
+export function getError(): number   { return _localError; }
+export function getMongoStatus(): MongoState { return _state; }

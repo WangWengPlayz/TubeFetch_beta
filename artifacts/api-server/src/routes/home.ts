@@ -490,6 +490,16 @@ function buildHtml(version: string): string {
     .stat-clickable{cursor:pointer;transition:all .2s}
     .stat-clickable:hover{border-color:rgba(255,0,0,.28)!important;background:rgba(255,0,0,.05)!important;transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.4)}
     .stat-clickable:active{transform:translateY(0)}
+    /* MongoDB indicator */
+    .db-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:5px;vertical-align:middle;flex-shrink:0}
+    .db-dot.connected{background:#4ade80;box-shadow:0 0 5px #4ade8088}
+    .db-dot.fallback{background:#f59e0b;box-shadow:0 0 5px #f59e0b88}
+    .db-dot.failed{background:#FF4444;box-shadow:0 0 5px #FF444488}
+    .sm-mongo-row{display:flex;align-items:center;justify-content:center;gap:7px;font-size:.62rem;font-family:monospace;margin-top:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,.05)}
+    .sm-mongo-badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:20px;font-size:.6rem;font-weight:800;letter-spacing:.3px;text-transform:uppercase}
+    .sm-mongo-badge.connected{background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.18)}
+    .sm-mongo-badge.fallback{background:rgba(245,158,11,.08);color:#f59e0b;border:1px solid rgba(245,158,11,.18)}
+    .sm-mongo-badge.failed{background:rgba(255,68,68,.08);color:#FF4444;border:1px solid rgba(255,68,68,.18)}
     /* ── HOSTING BADGE ── */
     .host-badge{margin-top:12px;display:flex;align-items:center;justify-content:center}
     .host-pill{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:5px 15px;font-size:.68rem;font-weight:700;color:#3F3F3F;text-decoration:none;transition:all .18s;letter-spacing:.2px}
@@ -604,7 +614,7 @@ function buildHtml(version: string): string {
     </div>
     <div class="stats-bar">
       <div class="stat-item stat-clickable" onclick="openStatsPopup()" title="View success &amp; error breakdown">
-        <span class="stat-num red" id="stat-count">—</span>
+        <span class="stat-num red" id="stat-count">—<span class="db-dot fallback" id="db-dot" title="Connecting to MongoDB..."></span></span>
         <span class="stat-lbl">API Calls &#x2197;</span>
       </div>
       <div class="stat-item">
@@ -915,7 +925,16 @@ function buildHtml(version: string): string {
 function fetchStats(){
   fetch('/api/stats').then(function(r){ return r.json(); }).then(function(d){
     var el = document.getElementById('stat-count');
-    if(el && typeof d.ApiCount === 'number') el.textContent = d.ApiCount.toLocaleString();
+    var dot = document.getElementById('db-dot');
+    if(el && typeof d.ApiCount === 'number'){
+      el.childNodes[0].nodeValue = d.ApiCount.toLocaleString();
+    }
+    if(dot){
+      var connected = d.mongoConnected === true;
+      var status = d.mongoStatus || 'unknown';
+      dot.className = 'db-dot ' + (connected ? 'connected' : (status === 'failed' || status === 'no-uri' ? 'failed' : 'fallback'));
+      dot.title = connected ? 'MongoDB connected — counts persist across restarts' : 'MongoDB ' + status + ' — counts are in-memory only';
+    }
   }).catch(function(){});
 }
 setInterval(fetchStats, 5000);
@@ -1383,7 +1402,14 @@ function loadStatsData() {
     if (arcE) arcE.style.strokeDashoffset = SM_CIRC * (1 - fPct / 100);
     document.getElementById('sm-pct-e').textContent = fPct + '%';
     document.getElementById('sm-count-e').textContent = f.toLocaleString() + ' call' + (f !== 1 ? 's' : '');
-    document.getElementById('sm-footer').textContent = 'Total ' + total.toLocaleString() + ' API call' + (total !== 1 ? 's' : '') + ' \u00b7 ' + new Date().toLocaleTimeString();
+    var connected = d.mongoConnected === true;
+    var status = d.mongoStatus || 'unknown';
+    var badgeCls = connected ? 'connected' : (status === 'failed' || status === 'no-uri' ? 'failed' : 'fallback');
+    var badgeTxt = connected ? '&#x25CF; MongoDB' : (status === 'no-uri' ? '&#x25CB; No URI' : status === 'failed' ? '&#x25CF; DB Error' : '&#x25CF; Connecting');
+    var storeTxt = connected ? 'Counts persist across restarts' : 'In-memory only \u2014 resets on restart';
+    document.getElementById('sm-footer').innerHTML =
+      'Total ' + total.toLocaleString() + ' API call' + (total !== 1 ? 's' : '') + ' &middot; ' + new Date().toLocaleTimeString() +
+      '<div class="sm-mongo-row"><span class="sm-mongo-badge ' + badgeCls + '">' + badgeTxt + '</span><span style="color:#444">' + storeTxt + '</span></div>';
   }).catch(function() { document.getElementById('sm-footer').textContent = 'Failed to load stats'; });
 }
 
