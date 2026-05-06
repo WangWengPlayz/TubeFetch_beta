@@ -4,6 +4,7 @@ import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
 import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
+import { dedup, withTimeout } from "../lib/dedup";
 
 const _require = createRequire(import.meta.url);
 const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
@@ -78,7 +79,10 @@ router.get("/v2/q", async (req: Request, res: Response) => {
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     } else {
-      const searchResult = await yts(input);
+      const searchResult = await dedup(
+        `yts:${input}`,
+        () => withTimeout(yts(input), 15_000, "yt-search"),
+      );
       const first = searchResult.videos[0];
       if (!first) {
         res.status(404).json({
@@ -102,7 +106,10 @@ router.get("/v2/q", async (req: Request, res: Response) => {
       return;
     }
 
-    const dl = await ytdown(youtubeUrl);
+    const dl = await dedup(
+      `ytdown:${videoId}`,
+      () => withTimeout(ytdown(youtubeUrl), 20_000, "ytdown"),
+    );
     const dlData = (dl?.status ? dl.data : null) ?? null;
 
     const mp4Url = dlData?.video ?? dlData?.high ?? null;

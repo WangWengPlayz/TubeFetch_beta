@@ -4,6 +4,7 @@ import { TtlCache } from "../lib/cache";
 import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
 import { inferCategory } from "../lib/category";
+import { dedup, withTimeout } from "../lib/dedup";
 
 const router: IRouter = Router();
 
@@ -77,7 +78,10 @@ router.get("/v3/q", async (req: Request, res: Response) => {
   }
 
   try {
-    const searchResult = await yts(input);
+    const searchResult = await dedup(
+      `yts:${input}`,
+      () => withTimeout(yts(input), 15_000, "yt-search"),
+    );
     const videos = searchResult.videos.slice(0, 10);
 
     const results: V3Video[] = videos.map((v, i) => {

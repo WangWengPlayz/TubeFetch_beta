@@ -5,9 +5,22 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.1.2",
+    version: "1.1.3",
     date: "2026-05-06",
     tag: "current",
+    notes: [
+      "Concurrency: in-flight request deduplication — duplicate queries share one upstream call instead of each hitting the external API independently",
+      "Reliability: hard 20 s timeout on all download calls and 15 s on search — eliminates indefinite hangs that caused 502 errors under load",
+      "MongoDB: stats result cached in-memory for 4 s — reduces database round-trips by ~97% (stats bar now responds in <1 ms instead of 140+ ms)",
+      "MongoDB: automatic reconnect retry after 60 s if initial connection fails — no longer stays permanently disconnected after a transient error",
+      "MongoDB: connection pool tuned (min 1, max 5, idle timeout 30 s) for efficient multi-user throughput",
+      "API errors now return structured JSON with timeout message instead of a silent 502",
+    ],
+  },
+  {
+    version: "1.1.2",
+    date: "2026-05-06",
+    tag: "",
     notes: [
       "V1 result card: video preview now full-width 16:9 — no longer a narrow side column",
       "V1 Preview plays YouTube via the IFrame Player API — reliable autoplay, no CORS issues",
