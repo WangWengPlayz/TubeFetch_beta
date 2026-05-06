@@ -5,9 +5,22 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.1.1",
+    date: "2026-05-06",
+    tag: "current",
+    notes: [
+      "Fixed YouTube embed not loading in V1 Preview — CSP now allows frame-src youtube.com",
+      "MongoDB: detailed error logging (name, message, code, stack) on connection failure",
+      "MongoDB: logs URI host (credentials redacted) so misconfigured URIs are easy to spot",
+      "MongoDB: increased connection timeouts to 8 s and socket timeout to 10 s",
+      "render.yaml: MONGODB_URI now declared as a required env var (set it in Render dashboard)",
+      "Build: mockup-sandbox excluded from production typecheck and build",
+    ],
+  },
+  {
     version: "1.0.8",
     date: "2026-05-05",
-    tag: "current",
+    tag: "",
     notes: [
       "Global ApiCount — every response now includes the total request counter",
       "Live stats bar in hero: total calls, version, cache TTL",
@@ -1500,7 +1513,7 @@ router.get("/", (_req, res) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-ancestors 'none'",
+    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
   );
   res.send(buildHtml(VERSION));
 });

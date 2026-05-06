@@ -2,7 +2,7 @@
 
 REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, metadata, and top search results.
 
-## Current Version: 1.0.8
+## Current Version: 1.1.1
 
 ## Stack
 

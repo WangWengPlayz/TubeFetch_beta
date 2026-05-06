@@ -22,17 +22,21 @@ async function doConnect(): Promise<void> {
 
   if (!uri) {
     _state = "no-uri";
-    console.log("[TubeFetch] ⚠  MONGODB_URI not set — counts are in-memory only (reset on restart)");
+    console.warn("[TubeFetch] ⚠  MONGODB_URI env var is not set — counts are in-memory only (reset on restart)");
+    console.warn("[TubeFetch] ⚠  To enable persistence, set MONGODB_URI in your environment / Render dashboard");
     return;
   }
 
+  // Log that a URI is present without revealing credentials
+  const uriPreview = uri.replace(/:\/\/[^@]+@/, "://<credentials>@");
+  console.log(`[TubeFetch] 🔄 Connecting to MongoDB... (${uriPreview})`);
   _state = "connecting";
-  console.log("[TubeFetch] 🔄 Connecting to MongoDB...");
 
   try {
     const client = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS: 8000,
+      socketTimeoutMS: 10000,
     });
 
     await client.connect();
@@ -56,8 +60,15 @@ async function doConnect(): Promise<void> {
   } catch (err) {
     _state = "failed";
     _col = null;
-    console.error("[TubeFetch] ❌ MongoDB connection failed:", (err as Error).message);
-    console.log("[TubeFetch] ⚠  Falling back to in-memory counts (not persistent)");
+    const e = err as Error & { code?: string | number; codeName?: string };
+    console.error("[TubeFetch] ❌ MongoDB connection failed");
+    console.error(`[TubeFetch]    name    : ${e.name}`);
+    console.error(`[TubeFetch]    message : ${e.message}`);
+    if (e.code)     console.error(`[TubeFetch]    code    : ${e.code}`);
+    if (e.codeName) console.error(`[TubeFetch]    codeName: ${e.codeName}`);
+    if (e.stack)    console.error(`[TubeFetch]    stack   :\n${e.stack}`);
+    console.warn("[TubeFetch] ⚠  Falling back to in-memory counts (not persistent across restarts)");
+    console.warn("[TubeFetch] ⚠  Common causes: wrong URI, IP not allowlisted in MongoDB Atlas, network blocked by host");
   }
 }
 
