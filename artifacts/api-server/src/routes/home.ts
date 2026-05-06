@@ -5,9 +5,17 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.1.1",
+    version: "1.1.2",
     date: "2026-05-06",
     tag: "current",
+    notes: [
+      "V1 result card: video preview now full-width 16:9 — no longer a narrow side column",
+    ],
+  },
+  {
+    version: "1.1.1",
+    date: "2026-05-06",
+    tag: "",
     notes: [
       "V1 Preview plays YouTube via the IFrame Player API — reliable autoplay, no CORS issues",
       "MongoDB: detailed error logging (name, message, code, stack) on connection failure",
@@ -366,9 +374,8 @@ function buildHtml(version: string): string {
     /* ── V1 RICH RESULT CARD ── */
     .r-card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden;margin-bottom:12px;animation:slide-up .28s cubic-bezier(.34,1.2,.64,1) both;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
     @keyframes slide-up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-    .r-inner{display:grid;grid-template-columns:192px 1fr}
-    @media(max-width:560px){.r-inner{grid-template-columns:1fr}}
-    .r-thumb{position:relative;background:#0a0a0a;min-height:120px;overflow:hidden}
+    .r-inner{display:flex;flex-direction:column}
+    .r-thumb{position:relative;background:#0a0a0a;width:100%;aspect-ratio:16/9;overflow:hidden}
     .r-thumb-img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0;transition:opacity .55s ease}
     .r-dur{position:absolute;bottom:6px;right:6px;z-index:4;background:rgba(0,0,0,.85);color:#F1F1F1;font-size:.63rem;font-weight:700;padding:2px 6px;border-radius:4px;font-family:monospace}
     .r-cached-badge{position:absolute;top:6px;left:6px;z-index:4;display:none;background:rgba(255,0,0,.15);color:#FF4444;font-size:.6rem;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.4px;text-transform:uppercase;border:1px solid rgba(255,0,0,.2)}
