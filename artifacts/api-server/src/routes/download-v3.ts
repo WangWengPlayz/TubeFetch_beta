@@ -24,17 +24,21 @@ interface V3Video {
   category: string;
 }
 
-interface V3Response {
+interface V3Payload {
   credit: "MJL";
   version: string;
-  ApiCount: number;
-  ms: number;
   query: string;
   total_results: number;
   results: V3Video[];
 }
 
-const cache = new TtlCache<Omit<V3Response, "ms" | "ApiCount">>(90_000);
+interface V3Response extends V3Payload {
+  ApiCount: number;
+  ms: number;
+}
+
+// Fresh 5 min, stale-served up to 20 min (SWR window)
+const cache = new TtlCache<V3Payload>(300_000, 1_200_000);
 
 function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
   name: string | null;
@@ -45,9 +49,48 @@ function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
   return { name: author.name ?? null, url: author.url ?? null };
 }
 
+async function fetchPayload(input: string): Promise<V3Payload> {
+  const searchResult = await dedup(
+    `yts:${input}`,
+    () => withTimeout(yts(input), 15_000, "yt-search"),
+  );
+  const videos = searchResult.videos.slice(0, 10);
+
+  const results: V3Video[] = videos.map((v, i) => {
+    const { name: channelName, url: channelUrl } = resolveAuthor(v.author);
+    const thumbnail =
+      v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+    const desc = v.description ?? "";
+    const category = inferCategory(v.keywords ?? [], v.title ?? "", desc);
+    return {
+      rank: i + 1,
+      video_id: v.videoId,
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
+      title: v.title ?? "",
+      description: desc || null,
+      channel_name: channelName,
+      channel_url: channelUrl,
+      published: v.ago ?? null,
+      duration: v.duration?.timestamp ?? null,
+      duration_seconds: v.duration?.seconds ?? null,
+      thumbnail,
+      views: v.views ?? null,
+      category,
+    };
+  });
+
+  return {
+    credit: "MJL",
+    version: VERSION,
+    query: input,
+    total_results: results.length,
+    results,
+  };
+}
+
 router.get("/v3/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = await increment();
+  const ApiCount = increment();
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
@@ -70,54 +113,26 @@ router.get("/v3/q", async (req: Request, res: Response) => {
 
   const input = query.trim();
 
-  const cached = cache.get(input);
-  if (cached) {
-    res.setHeader("Cache-Control", "public, max-age=90");
-    res.json({ ...cached, ApiCount, ms: Date.now() - t0 });
+  // Stale-while-revalidate: serve stale cache instantly, refresh in background
+  const hit = cache.getWithMeta(input);
+  if (hit) {
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({ ...hit.value, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
+    if (hit.stale) {
+      setImmediate(() => {
+        dedup(`swr-v3:${input}`, () => fetchPayload(input))
+          .then(payload => cache.set(input, payload))
+          .catch(() => {});
+      });
+    }
     return;
   }
 
   try {
-    const searchResult = await dedup(
-      `yts:${input}`,
-      () => withTimeout(yts(input), 15_000, "yt-search"),
-    );
-    const videos = searchResult.videos.slice(0, 10);
-
-    const results: V3Video[] = videos.map((v, i) => {
-      const { name: channelName, url: channelUrl } = resolveAuthor(v.author);
-      const thumbnail =
-        v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
-      const desc = v.description ?? "";
-      const category = inferCategory(v.keywords ?? [], v.title ?? "", desc);
-      return {
-        rank: i + 1,
-        video_id: v.videoId,
-        url: `https://www.youtube.com/watch?v=${v.videoId}`,
-        title: v.title ?? "",
-        description: desc || null,
-        channel_name: channelName,
-        channel_url: channelUrl,
-        published: v.ago ?? null,
-        duration: v.duration?.timestamp ?? null,
-        duration_seconds: v.duration?.seconds ?? null,
-        thumbnail,
-        views: v.views ?? null,
-        category,
-      };
-    });
-
-    const payload: Omit<V3Response, "ms" | "ApiCount"> = {
-      credit: "MJL",
-      version: VERSION,
-      query: input,
-      total_results: results.length,
-      results,
-    };
-
+    const payload = await dedup(`fetch-v3:${input}`, () => fetchPayload(input));
     cache.set(input, payload);
-    res.setHeader("Cache-Control", "public, max-age=90");
-    res.json({ ...payload, ApiCount, ms: Date.now() - t0 });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({ ...payload, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "v3 search error");

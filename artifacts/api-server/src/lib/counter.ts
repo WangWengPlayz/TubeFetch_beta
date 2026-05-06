@@ -55,6 +55,7 @@ async function doConnect(): Promise<void> {
 
     const col = client.db("tubefetch").collection<CounterDoc>("counters");
 
+    // Upsert the doc if it doesn't exist
     await col.updateOne(
       { _id: "apiCount" },
       { $setOnInsert: { value: 0, successCount: 0, errorCount: 0 } },
@@ -66,10 +67,18 @@ async function doConnect(): Promise<void> {
       { $set: { successCount: 0, errorCount: 0 } },
     );
 
+    // Seed local counter from MongoDB so ApiCount stays consistent across restarts
+    const doc = await col.findOne({ _id: "apiCount" });
+    if (doc) {
+      _localTotal   = doc.value;
+      _localSuccess = doc.successCount ?? 0;
+      _localError   = doc.errorCount   ?? 0;
+    }
+
     _col = col;
     _state = "connected";
     _lastFailedAt = 0;
-    console.log("[TubeFetch] ✅ MongoDB connected — total, success & error counts are now persistent");
+    console.log(`[TubeFetch] ✅ MongoDB connected — ApiCount seeded at ${_localTotal}`);
   } catch (err) {
     _state = "failed";
     _col = null;
@@ -114,21 +123,20 @@ export async function resetCount(): Promise<void> {
   console.log("[TubeFetch] 🔄 ApiCount reset to 0");
 }
 
-export async function increment(): Promise<number> {
+/**
+ * Increment is synchronous — increments the local counter immediately and
+ * returns it in O(1). MongoDB is updated in the background without blocking
+ * the request handler, so even cache-hit responses are not delayed by DB I/O.
+ */
+export function increment(): number {
   _localTotal++;
   _statsCache = null;
-  await ensureConnected();
-  if (!_col) return _localTotal;
-  try {
-    const doc = await _col.findOneAndUpdate(
-      { _id: "apiCount" },
-      { $inc: { value: 1 } },
-      { upsert: true, returnDocument: "after" },
-    );
-    return doc?.value ?? _localTotal;
-  } catch {
-    return _localTotal;
+  if (_col) {
+    _col
+      .updateOne({ _id: "apiCount" }, { $inc: { value: 1 } }, { upsert: true })
+      .catch(() => {});
   }
+  return _localTotal;
 }
 
 export function recordSuccess(): void {

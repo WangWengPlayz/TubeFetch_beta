@@ -1,28 +1,42 @@
 interface CacheEntry<T> {
   value: T;
-  expiresAt: number;
+  freshUntil: number;
+  staleUntil: number;
 }
 
 export class TtlCache<T> {
   private store = new Map<string, CacheEntry<T>>();
-  private readonly ttlMs: number;
+  private readonly freshTtlMs: number;
+  private readonly staleTtlMs: number;
 
-  constructor(ttlMs: number) {
-    this.ttlMs = ttlMs;
+  constructor(freshTtlMs: number, staleTtlMs?: number) {
+    this.freshTtlMs = freshTtlMs;
+    this.staleTtlMs = staleTtlMs ?? freshTtlMs * 4;
   }
 
   get(key: string): T | undefined {
+    const result = this.getWithMeta(key);
+    return result?.value;
+  }
+
+  getWithMeta(key: string): { value: T; stale: boolean } | undefined {
     const entry = this.store.get(key);
     if (!entry) return undefined;
-    if (Date.now() > entry.expiresAt) {
+    const now = Date.now();
+    if (now > entry.staleUntil) {
       this.store.delete(key);
       return undefined;
     }
-    return entry.value;
+    return { value: entry.value, stale: now > entry.freshUntil };
   }
 
   set(key: string, value: T): void {
-    this.store.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+    const now = Date.now();
+    this.store.set(key, {
+      value,
+      freshUntil: now + this.freshTtlMs,
+      staleUntil: now + this.staleTtlMs,
+    });
   }
 
   delete(key: string): void {
@@ -30,11 +44,10 @@ export class TtlCache<T> {
   }
 
   size(): number {
-    // prune expired entries while counting
     let count = 0;
     const now = Date.now();
     for (const [key, entry] of this.store) {
-      if (now > entry.expiresAt) {
+      if (now > entry.staleUntil) {
         this.store.delete(key);
       } else {
         count++;

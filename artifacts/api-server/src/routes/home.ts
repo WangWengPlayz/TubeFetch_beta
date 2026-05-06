@@ -5,9 +5,19 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.1.3",
+    version: "1.1.4",
     date: "2026-05-06",
     tag: "current",
+    notes: [
+      "Performance: stale-while-revalidate (SWR) caching — repeat requests are served instantly from cache while a background refresh runs silently; only the very first request for any video is slow",
+      "Performance: fresh cache TTL extended from 90 s to 5 min; stale window up to 20 min — dramatically reduces upstream API calls under real traffic",
+      "Performance: fetch logic factored into reusable functions (v1/v2/v3) enabling clean SWR background refresh without code duplication",
+    ],
+  },
+  {
+    version: "1.1.3",
+    date: "2026-05-06",
+    tag: "",
     notes: [
       "Concurrency: in-flight request deduplication — duplicate queries share one upstream call instead of each hitting the external API independently",
       "Reliability: hard 20 s timeout on all download calls and 15 s on search — eliminates indefinite hangs that caused 502 errors under load",

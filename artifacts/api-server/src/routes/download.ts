@@ -12,13 +12,10 @@ const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-m
 
 const router: IRouter = Router();
 
-interface VideoResponse {
+interface VideoPayload {
   version: string;
   success: true;
   creditTo: "MJL";
-  ApiCount: number;
-  cached: boolean;
-  ms: number;
   video_id: string;
   url: string;
   category: string;
@@ -29,7 +26,17 @@ interface VideoResponse {
   };
 }
 
-const cache = new TtlCache<Omit<VideoResponse, "ms" | "cached" | "ApiCount">>(90_000);
+interface VideoResponse extends VideoPayload {
+  ApiCount: number;
+  cached: boolean;
+  ms: number;
+}
+
+// Fresh 5 min, stale-served up to 20 min (SWR window)
+const cache = new TtlCache<VideoPayload>(300_000, 1_200_000);
+
+// Maps title query → videoId so repeat title lookups skip the yt-search call entirely
+const queryToId = new Map<string, string>();
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -73,9 +80,59 @@ function resolveThumbnail(
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
+async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoPayload> {
+  const [infoResult, dlResult] = await Promise.allSettled([
+    dedup(`yts-vid:${videoId}`, () => withTimeout(yts({ videoId }), 15_000, "yt-search-id")),
+    dedup(`ytdown:${videoId}`, () => withTimeout(ytdown(youtubeUrl), 20_000, "ytdown")),
+  ]);
+
+  const info = infoResult.status === "fulfilled" ? infoResult.value : null;
+  const dl = dlResult.status === "fulfilled" ? dlResult.value : null;
+  const dlData = (dl?.status ? dl.data : null) ?? null;
+
+  const { name: authorName, url: channelUrl } = resolveAuthor(info?.author);
+  const thumbnail = resolveThumbnail(videoId, info, dlData?.thumbnail);
+  const category = inferCategory(
+    info?.keywords ?? [],
+    info?.title ?? dlData?.title ?? "",
+    info?.description ?? "",
+  );
+
+  const rawInfo: Record<string, unknown> = {
+    title:            info?.title ?? dlData?.title ?? null,
+    author:           authorName,
+    channel_url:      channelUrl,
+    thumbnail,
+    duration:         info?.duration?.timestamp ?? null,
+    duration_seconds: info?.duration?.seconds ?? null,
+    views:            info?.views ?? null,
+    likes:            info?.likes ?? null,
+    published:        info?.ago ?? null,
+    description:      info?.description ?? null,
+    keywords:         info?.keywords ?? [],
+  };
+
+  const mp4Url = dlData?.video ?? dlData?.high ?? null;
+  const mp3Url = dlData?.audio ?? dlData?.low ?? null;
+
+  return {
+    version: VERSION,
+    success: true,
+    creditTo: "MJL",
+    video_id: videoId,
+    url: youtubeUrl,
+    category,
+    info: clean(rawInfo),
+    media: {
+      mp4: mp4Url ? { url: mp4Url, quality: "HD" } : null,
+      mp3: mp3Url ? { url: mp3Url } : null,
+    },
+  };
+}
+
 router.get("/v1/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = await increment();
+  const ApiCount = increment();
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
@@ -123,85 +180,54 @@ router.get("/v1/q", async (req: Request, res: Response) => {
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     } else {
-      const searchResult = await dedup(
-        `yts:${input}`,
-        () => withTimeout(yts(input), 15_000, "yt-search"),
-      );
-      const first = searchResult.videos[0];
-      if (!first) {
-        res.status(404).json({
-          version: VERSION,
-          success: false,
-          creditTo: "MJL",
-          ApiCount,
-          ms: Date.now() - t0,
-          error: "No YouTube results found for this query.",
-          query: input,
-        });
-        return;
+      // Fast path: previously resolved title → videoId (skips the yt-search call entirely)
+      const known = queryToId.get(input);
+      if (known) {
+        videoId = known;
+        youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      } else {
+        const searchResult = await dedup(
+          `yts:${input}`,
+          () => withTimeout(yts(input), 15_000, "yt-search"),
+        );
+        const first = searchResult.videos[0];
+        if (!first) {
+          res.status(404).json({
+            version: VERSION,
+            success: false,
+            creditTo: "MJL",
+            ApiCount,
+            ms: Date.now() - t0,
+            error: "No YouTube results found for this query.",
+            query: input,
+          });
+          return;
+        }
+        videoId = first.videoId;
+        youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        queryToId.set(input, videoId);
       }
-      videoId = first.videoId;
-      youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     }
 
-    const cached = cache.get(videoId);
-    if (cached) {
-      res.setHeader("Cache-Control", "public, max-age=90");
-      res.json({ ...cached, ApiCount, cached: true, ms: Date.now() - t0 });
+    // Stale-while-revalidate: serve stale cache instantly, refresh in background
+    const hit = cache.getWithMeta(videoId);
+    if (hit) {
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies VideoResponse);
+      if (hit.stale) {
+        setImmediate(() => {
+          dedup(`swr:${videoId}`, () => fetchPayload(videoId!, youtubeUrl))
+            .then(payload => cache.set(videoId!, payload))
+            .catch(() => {});
+        });
+      }
       return;
     }
 
-    const [infoResult, dlResult] = await Promise.allSettled([
-      dedup(`yts-vid:${videoId}`, () => withTimeout(yts({ videoId }), 15_000, "yt-search-id")),
-      dedup(`ytdown:${videoId}`, () => withTimeout(ytdown(youtubeUrl), 20_000, "ytdown")),
-    ]);
-
-    const info = infoResult.status === "fulfilled" ? infoResult.value : null;
-    const dl = dlResult.status === "fulfilled" ? dlResult.value : null;
-    const dlData = (dl?.status ? dl.data : null) ?? null;
-
-    const { name: authorName, url: channelUrl } = resolveAuthor(info?.author);
-    const thumbnail = resolveThumbnail(videoId, info, dlData?.thumbnail);
-    const category = inferCategory(
-      info?.keywords ?? [],
-      info?.title ?? dlData?.title ?? "",
-      info?.description ?? "",
-    );
-
-    const rawInfo: Record<string, unknown> = {
-      title:            info?.title ?? dlData?.title ?? null,
-      author:           authorName,
-      channel_url:      channelUrl,
-      thumbnail,
-      duration:         info?.duration?.timestamp ?? null,
-      duration_seconds: info?.duration?.seconds ?? null,
-      views:            info?.views ?? null,
-      likes:            info?.likes ?? null,
-      published:        info?.ago ?? null,
-      description:      info?.description ?? null,
-      keywords:         info?.keywords ?? [],
-    };
-
-    const mp4Url = dlData?.video ?? dlData?.high ?? null;
-    const mp3Url = dlData?.audio ?? dlData?.low ?? null;
-
-    const payload: Omit<VideoResponse, "ms" | "cached" | "ApiCount"> = {
-      version: VERSION,
-      success: true,
-      creditTo: "MJL",
-      video_id: videoId,
-      url: youtubeUrl,
-      category,
-      info: clean(rawInfo),
-      media: {
-        mp4: mp4Url ? { url: mp4Url, quality: "HD" } : null,
-        mp3: mp3Url ? { url: mp3Url } : null,
-      },
-    };
-
+    const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl));
     cache.set(videoId, payload);
-    res.setHeader("Cache-Control", "public, max-age=90");
-    res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies VideoResponse);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "YouTube download error");
