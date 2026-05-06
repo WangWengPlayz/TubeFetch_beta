@@ -51,7 +51,13 @@ Liveness probe. Includes `ApiCount`.
 
 ## ApiCount
 
-Every API request (v1, v2, v3, uptime, healthz) increments a global in-memory counter stored in `lib/counter.ts`. The current count is returned in every response as `ApiCount`. The web UI polls `/api/stats` every 5 seconds to show the live total in the hero stats bar.
+Only v1, v2, and v3 requests increment ApiCount. `/api/uptime` and `/api/healthz` do NOT count. The counter is stored persistently in MongoDB (`tubefetch.counters` collection, `_id: "apiCount"`). A local fallback counter is used if MongoDB is unavailable. Success/error split is tracked in-memory and exposed via `/api/stats`. The web UI polls `/api/stats` every 5 seconds.
+
+## Security (Web UI)
+
+- HTTP headers on `/`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy`, `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex`, `Cache-Control: no-store`
+- Meta robots: `noindex, nofollow, noarchive, nosnippet`
+- Client-side: right-click disabled, F12/Ctrl+U/Ctrl+S/Ctrl+Shift+I blocked, devtools detection (blur), drag disabled
 
 ## Categories
 

@@ -46,7 +46,7 @@ function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
 
 router.get("/v3/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = increment();
+  const ApiCount = await increment();
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();

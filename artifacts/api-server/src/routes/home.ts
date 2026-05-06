@@ -146,6 +146,9 @@ function buildHtml(version: string): string {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex"/>
+  <meta name="googlebot" content="noindex,nofollow"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
   <title>TubeFetch — MJL</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1413,6 +1416,49 @@ function loadStatsData() {
     badge.innerHTML = '<span class="host-pill">' + dot + (found.name === 'Local Dev' ? 'Running Locally' : found.name) + '</span>';
   }
 })();
+
+/* ════════════════════════════════
+   SECURITY — anti-scrape / anti-devtools
+════════════════════════════════ */
+(function() {
+  /* Disable right-click context menu */
+  document.addEventListener('contextmenu', function(e) { e.preventDefault(); }, true);
+
+  /* Block common keyboard shortcuts used to view source or open devtools */
+  document.addEventListener('keydown', function(e) {
+    var k = e.key || '';
+    /* Ctrl/Cmd + U (view-source), Ctrl/Cmd + S (save), Ctrl/Cmd + A (select-all on body) */
+    if ((e.ctrlKey || e.metaKey) && (k === 'u' || k === 'U' || k === 's' || k === 'S')) {
+      e.preventDefault(); return false;
+    }
+    /* F12 */
+    if (k === 'F12') { e.preventDefault(); return false; }
+    /* Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C */
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'I' || k === 'j' || k === 'J' || k === 'c' || k === 'C')) {
+      e.preventDefault(); return false;
+    }
+  }, true);
+
+  /* Detect devtools open via timing trick and blur content */
+  var _dt = false;
+  function _chk() {
+    var t = new Date();
+    debugger;
+    if (new Date() - t > 100 && !_dt) {
+      _dt = true;
+      document.body.style.filter = 'blur(8px)';
+      document.body.style.pointerEvents = 'none';
+    } else if (new Date() - t <= 100 && _dt) {
+      _dt = false;
+      document.body.style.filter = '';
+      document.body.style.pointerEvents = '';
+    }
+  }
+  setInterval(_chk, 1500);
+
+  /* Disable drag on images */
+  document.addEventListener('dragstart', function(e) { e.preventDefault(); }, true);
+})();
 </script>
 </body>
 </html>`;
@@ -1420,6 +1466,16 @@ function loadStatsData() {
 
 router.get("/", (_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-ancestors 'none'",
+  );
   res.send(buildHtml(VERSION));
 });
 

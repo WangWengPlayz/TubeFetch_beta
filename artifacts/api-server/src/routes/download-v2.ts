@@ -37,7 +37,7 @@ function isUrl(input: string): boolean {
 
 router.get("/v2/q", async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = increment();
+  const ApiCount = await increment();
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
