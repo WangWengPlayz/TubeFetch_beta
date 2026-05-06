@@ -9,7 +9,7 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     date: "2026-05-06",
     tag: "current",
     notes: [
-      "V1 Preview now uses the actual MP4 from the API — no YouTube iframe, no CSP issues",
+      "V1 Preview plays YouTube via the IFrame Player API — reliable autoplay, no CORS issues",
       "MongoDB: detailed error logging (name, message, code, stack) on connection failure",
       "MongoDB: logs URI host (credentials redacted) so misconfigured URIs are easy to spot",
       "MongoDB: increased connection timeouts to 8 s and socket timeout to 10 s",
@@ -387,7 +387,7 @@ function buildHtml(version: string): string {
     .r-skip-btn:hover{background:rgba(255,255,255,.18);color:#fff}
     .r-yt-wrap{position:absolute;inset:0;z-index:5;display:none;animation:yt-fade-in .5s ease both}
     @keyframes yt-fade-in{from{opacity:0}to{opacity:1}}
-    .r-yt-wrap video{width:100%;height:100%;border:none;display:block;object-fit:contain;background:#000}
+    .r-yt-wrap>div,.r-yt-wrap iframe{width:100%!important;height:100%!important;border:none;display:block;}
     .r-body{padding:15px 18px;display:flex;flex-direction:column;gap:9px;min-width:0}
     .r-title{font-size:.9rem;font-weight:700;color:#F1F1F1;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .r-author{font-size:.74rem;color:#60a5fa;text-decoration:none;font-weight:600;transition:color .15s}
@@ -708,7 +708,7 @@ function buildHtml(version: string): string {
                     <button class="r-skip-btn" onclick="skipCountdown()">Skip</button>
                   </div>
                   <div class="r-yt-wrap" id="r-yt-wrap">
-                    <video id="r-yt-frame" controls autoplay playsinline preload="none" src=""></video>
+                    <div id="r-yt-player"></div>
                   </div>
                 </div>
                 <div class="r-body">
@@ -1047,7 +1047,9 @@ var rawStore={0:'',1:'',2:'',3:'',4:''};
 var urlStore={0:'',1:'',2:'',3:'',4:''};
 var descExpanded=false;
 var v1VideoId='';
-var v1Mp4Url='';
+var ytPlayerInstance=null;
+var ytApiReady=false;
+var ytApiCallbacks=[];
 var cdTimer=null,cdInterval=null;
 
 /* ════════════════════════════════
@@ -1176,13 +1178,13 @@ function resetVideoPreview(){
   sv('r-play-overlay',true,'flex'); sv('r-countdown-wrap',false); sv('r-yt-wrap',false);
   var arc=document.getElementById('r-ring-arc');
   if(arc){ arc.style.transition='none'; arc.style.strokeDashoffset='201'; }
-  var vid=document.getElementById('r-yt-frame');
-  if(vid){ vid.pause(); vid.src=''; vid.load(); }
+  if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
+  var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
   var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='1';
 }
 function clearTimers(){ if(cdTimer){clearTimeout(cdTimer);cdTimer=null;} if(cdInterval){clearInterval(cdInterval);cdInterval=null;} }
 function startPreview(){
-  if(!v1Mp4Url) return;
+  if(!v1VideoId) return;
   sv('r-play-overlay',false); sv('r-countdown-wrap',true,'flex');
   document.getElementById('r-countdown-n').textContent='5';
   var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='.35';
@@ -1199,13 +1201,31 @@ function launchVideo(){
   var img=document.getElementById('r-thumb-img');
   if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
   var wrap=document.getElementById('r-yt-wrap'); wrap.style.display='block';
-  setTimeout(function(){
-    var vid=document.getElementById('r-yt-frame');
-    vid.src=v1Mp4Url;
-    vid.load();
-    vid.play().catch(function(){});
-  },120);
+  withYtApi(function(){
+    if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
+    var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
+    ytPlayerInstance=new YT.Player('r-yt-player',{
+      videoId:v1VideoId,
+      width:'100%',height:'100%',
+      playerVars:{autoplay:1,rel:0,modestbranding:1,playsinline:1,controls:1},
+      events:{onReady:function(e){ e.target.playVideo(); }}
+    });
+  });
 }
+function withYtApi(cb){
+  if(ytApiReady){ cb(); return; }
+  ytApiCallbacks.push(cb);
+  if(!document.getElementById('yt-iframe-api')){
+    var s=document.createElement('script');
+    s.id='yt-iframe-api'; s.src='https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+  }
+}
+window.onYouTubeIframeAPIReady=function(){
+  ytApiReady=true;
+  ytApiCallbacks.forEach(function(cb){ cb(); });
+  ytApiCallbacks=[];
+};
 
 /* ════════════════════════════════
    BTN RESET
@@ -1287,13 +1307,12 @@ async function fetchEp(n){
       var info=data.info||{};
       var media=data.media||{};
       v1VideoId=data.video_id||'';
-      v1Mp4Url=(media.mp4&&media.mp4.url)||'';
 
       var thumbEl=document.getElementById('r-thumb-img');
       thumbEl.src=info.thumbnail||''; thumbEl.alt=info.title||'';
       thumbEl.style.opacity='1'; thumbEl.style.transition='opacity .55s ease';
 
-      sv('r-play-overlay',!!v1Mp4Url,'flex');
+      sv('r-play-overlay',!!v1VideoId,'flex');
 
       var durEl=document.getElementById('r-dur');
       durEl.textContent=info.duration||'';
@@ -1521,7 +1540,7 @@ router.get("/", (_req, res) => {
   res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+    "default-src 'self'; script-src 'unsafe-inline' https://www.youtube.com https://www.youtube-nocookie.com; style-src 'unsafe-inline'; img-src * data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
   );
   res.send(buildHtml(VERSION));
 });
