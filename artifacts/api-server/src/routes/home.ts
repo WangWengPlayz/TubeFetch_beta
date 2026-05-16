@@ -5,9 +5,23 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.2.0",
+    date: "2026-05-16",
+    tag: "current",
+    notes: [
+      "VFX: layered noise grain texture breathes over the aurora at all times — background feels alive even when idle",
+      "VFX: intro letters materialise one by one left-to-right; a 0→100% counter fills in sync; screen splits on exit — top half rises, bottom half drops — revealing the site like a curtain",
+      "VFX: navbar starts fully transparent and gains frosted-glass backdrop + border as the user scrolls; nav links get a center-outward underline on hover; primary CTA pulses with a soft breathing glow on idle",
+      "VFX: scroll-reveal cards scale up from 96% and stagger in one after another; aurora hue shifts subtly as the user scrolls for a sense of journey",
+      "VFX: endpoint cards tilt in 3D toward the cursor on hover; buttons glow, rise, and press down with spring physics",
+      "VFX: hero-to-content transition uses a gradient fade — no hard section edge",
+      "VFX: full prefers-reduced-motion support — all CSS transitions and JS animations disabled cleanly for users who opt out",
+    ],
+  },
+  {
     version: "1.1.4",
     date: "2026-05-06",
-    tag: "current",
+    tag: "",
     notes: [
       "Performance: stale-while-revalidate (SWR) caching — repeat requests are served instantly from cache while a background refresh runs silently; only the very first request for any video is slow",
       "Performance: fresh cache TTL extended from 90 s to 5 min; stale window up to 20 min — dramatically reduces upstream API calls under real traffic",
@@ -305,6 +319,28 @@ function buildHtml(version: string, baseUrl: string): string {
     }
 
     /* ══════════════════════════════════════
+       NOISE GRAIN
+    ══════════════════════════════════════ */
+    #grain {
+      position: fixed; inset: -50%; z-index: 1; pointer-events: none;
+      width: 200%; height: 200%;
+      opacity: .038; mix-blend-mode: overlay; will-change: background-position;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat; background-size: 256px 256px;
+      animation: grain-shift .14s steps(1) infinite;
+    }
+    @keyframes grain-shift {
+      0%   { background-position: 0 0; }
+      14%  { background-position: 80px -40px; }
+      28%  { background-position: -60px 80px; }
+      42%  { background-position: 40px 60px; }
+      57%  { background-position: -80px -20px; }
+      71%  { background-position: 20px -80px; }
+      85%  { background-position: -40px 40px; }
+      100% { background-position: 60px -60px; }
+    }
+
+    /* ══════════════════════════════════════
        GRID OVERLAY
     ══════════════════════════════════════ */
     #grid-overlay {
@@ -320,19 +356,19 @@ function buildHtml(version: string, baseUrl: string): string {
     /* ══════════════════════════════════════
        SCROLL REVEAL
     ══════════════════════════════════════ */
-    .reveal { opacity: 0; transform: translateY(32px); transition: opacity .7s var(--ease-out), transform .7s var(--ease-out); }
+    .reveal { opacity: 0; transform: translateY(28px) scale(.97); transition: opacity .65s var(--ease-out), transform .65s var(--ease-out); }
     .reveal.in-view { opacity: 1; transform: none; }
-    .reveal-d1 { transition-delay: .08s; }
-    .reveal-d2 { transition-delay: .16s; }
-    .reveal-d3 { transition-delay: .24s; }
-    .reveal-d4 { transition-delay: .32s; }
+    .reveal-d1 { transition-delay: .1s; }
+    .reveal-d2 { transition-delay: .2s; }
+    .reveal-d3 { transition-delay: .3s; }
+    .reveal-d4 { transition-delay: .4s; }
 
     /* ══════════════════════════════════════
        INTRO
     ══════════════════════════════════════ */
     #intro {
       position: fixed; inset: 0; z-index: 9999;
-      background: #050505;
+      background: transparent;
       display: flex; align-items: center; justify-content: center;
       overflow: hidden;
     }
@@ -454,6 +490,40 @@ function buildHtml(version: string, baseUrl: string): string {
       100% { opacity: 0; filter: blur(16px) brightness(0); transform: scale(1.06); }
     }
 
+    /* ── INTRO SPLIT CURTAIN ── */
+    #intro-split-top, #intro-split-bottom {
+      position: absolute; left: 0; right: 0; z-index: 0;
+      background: #050505;
+      transition: transform .72s cubic-bezier(.76,0,.24,1);
+    }
+    #intro-split-top { top: 0; height: 50%; transform: translateY(0); }
+    #intro-split-bottom { bottom: 0; height: 50%; transform: translateY(0); }
+    #intro.splitting #intro-split-top { transform: translateY(-100%); }
+    #intro.splitting #intro-split-bottom { transform: translateY(100%); }
+
+    /* ── INTRO LETTERS ── */
+    .i-l {
+      display: inline-block;
+      animation: letter-rise .44s var(--ease-spring) both;
+      animation-delay: calc(.75s + var(--di) * .065s);
+    }
+    .i-l-red {
+      color: transparent;
+      background: linear-gradient(135deg, #FF6666, #FF0000, #CC0000);
+      -webkit-background-clip: text; background-clip: text;
+    }
+    @keyframes letter-rise {
+      from { transform: translateY(105%) scaleY(1.15); opacity: 0; }
+      to   { transform: none; opacity: 1; }
+    }
+
+    /* ── INTRO COUNTER ── */
+    .i-counter {
+      font-size: .64rem; font-weight: 900; color: rgba(255,80,80,.55);
+      font-family: var(--mono); letter-spacing: 2px;
+      margin-top: 6px; animation: fade-up-soft .4s ease both 1.4s;
+    }
+
     /* ══════════════════════════════════════
        TERMS OVERLAY
     ══════════════════════════════════════ */
@@ -542,14 +612,21 @@ function buildHtml(version: string, baseUrl: string): string {
     ══════════════════════════════════════ */
     .topbar {
       position: sticky; top: 0; z-index: 100; height: 60px;
-      background: rgba(8,8,8,.85); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-      border-bottom: 1px solid rgba(255,255,255,.06);
+      background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+      border-bottom: 1px solid transparent;
       display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+      transition: background .45s var(--ease-in-out), border-color .45s var(--ease-in-out), backdrop-filter .45s var(--ease-in-out);
+    }
+    .topbar.scrolled {
+      background: rgba(8,8,8,.88); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border-bottom-color: rgba(255,255,255,.07);
     }
     .topbar::after {
       content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
       background: linear-gradient(90deg, transparent 0%, rgba(255,0,0,.3) 30%, rgba(255,80,80,.15) 50%, rgba(255,0,0,.3) 70%, transparent 100%);
+      opacity: 0; transition: opacity .45s var(--ease-in-out);
     }
+    .topbar.scrolled::after { opacity: 1; }
     .topbar-logo {
       display: flex; align-items: center; gap: 10px; text-decoration: none;
       transition: opacity .2s; cursor: pointer;
@@ -571,9 +648,16 @@ function buildHtml(version: string, baseUrl: string): string {
     .nav-links { display: flex; gap: 2px; }
     .nav-links a {
       color: var(--text3); text-decoration: none; font-size: .78rem; font-weight: 600;
-      padding: 6px 12px; border-radius: var(--radius-xs); transition: all .2s; white-space: nowrap;
+      padding: 6px 12px; border-radius: var(--radius-xs); transition: color .2s, background .2s; white-space: nowrap;
+      position: relative;
     }
-    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+    .nav-links a::after {
+      content: ''; position: absolute; bottom: 3px; left: 50%; right: 50%;
+      height: 1px; background: var(--red); border-radius: 1px;
+      transition: left .25s var(--ease-out), right .25s var(--ease-out);
+    }
+    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.04); }
+    .nav-links a:hover::after { left: 12px; right: 12px; }
     @media (max-width: 540px) { .nav-links { display: none; } }
 
     /* ── BELL ── */
@@ -795,9 +879,14 @@ function buildHtml(version: string, baseUrl: string): string {
       content: ''; position: absolute; inset: 0;
       background: linear-gradient(135deg, rgba(255,255,255,.18) 0%, transparent 50%);
     }
-    .ep-fetch-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,0,0,.42); background: linear-gradient(135deg, #CC0000, #FF2020); }
-    .ep-fetch-btn:active:not(:disabled) { transform: translateY(0); box-shadow: 0 2px 10px rgba(255,0,0,.25); }
-    .ep-fetch-btn:disabled { background: rgba(255,255,255,.05); color: var(--text4); cursor: not-allowed; transform: none; box-shadow: none; }
+    .ep-fetch-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,0,0,.42); background: linear-gradient(135deg, #CC0000, #FF2020); animation: none; }
+    .ep-fetch-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 2px 10px rgba(255,0,0,.25); }
+    .ep-fetch-btn:disabled { background: rgba(255,255,255,.05); color: var(--text4); cursor: not-allowed; transform: none; box-shadow: none; animation: none; }
+    .ep-fetch-btn:not(:disabled):not(:active) { animation: btn-breathe 2.8s ease-in-out infinite; }
+    @keyframes btn-breathe {
+      0%,100% { box-shadow: 0 4px 16px rgba(255,0,0,.28); }
+      50%      { box-shadow: 0 6px 32px rgba(255,0,0,.56), 0 0 50px rgba(255,0,0,.1); }
+    }
     .ep-fetch-btn svg { width: 13px; height: 13px; flex-shrink: 0; position: relative; z-index: 1; }
     .ep-fetch-btn span { position: relative; z-index: 1; }
     @media (max-width: 440px) { .ep-input-row { flex-direction: column; } }
@@ -1090,6 +1179,22 @@ function buildHtml(version: string, baseUrl: string): string {
     footer .tf { color: var(--red); font-weight: 800; }
 
     /* ══════════════════════════════════════
+       HERO GRADIENT BLEED
+    ══════════════════════════════════════ */
+    .hero::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 100px;
+      background: linear-gradient(to bottom, transparent, var(--bg));
+      pointer-events: none; z-index: 2;
+    }
+
+    /* ══════════════════════════════════════
+       CARD 3D TILT
+    ══════════════════════════════════════ */
+    .ep-card {
+      transform-style: preserve-3d; will-change: transform;
+    }
+
+    /* ══════════════════════════════════════
        MOBILE
     ══════════════════════════════════════ */
     @media (max-width: 640px) {
@@ -1099,6 +1204,20 @@ function buildHtml(version: string, baseUrl: string): string {
       .ep-header { padding: 14px 16px; }
       .ep-body-inner { padding: 16px; }
       .r-body { padding: 14px 16px; }
+    }
+
+    /* ══════════════════════════════════════
+       REDUCED MOTION
+    ══════════════════════════════════════ */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        animation-delay: .01ms !important;
+      }
+      .reveal { opacity: 1 !important; transform: none !important; }
+      #grain { animation: none !important; }
     }
   </style>
 </head>
@@ -1114,11 +1233,14 @@ function buildHtml(version: string, baseUrl: string): string {
   <div class="aurora-orb ao3"></div>
 </div>
 <div id="grid-overlay" aria-hidden="true"></div>
+<div id="grain" aria-hidden="true"></div>
 
 <!-- ══════════════════════════════════════
      INTRO
 ══════════════════════════════════════ -->
 <div id="intro" role="status" aria-label="Loading TubeFetch">
+  <div id="intro-split-top"></div>
+  <div id="intro-split-bottom"></div>
   <div id="intro-grid"></div>
   <div id="intro-aurora">
     <div class="ia1"></div>
@@ -1130,7 +1252,7 @@ function buildHtml(version: string, baseUrl: string): string {
       <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
     </div>
     <div class="i-title">
-      <div class="i-word"><span>Tube</span></div><div class="i-word"><span>Fetch</span></div>
+      <div class="i-word"><span class="i-l" style="--di:0">T</span><span class="i-l" style="--di:1">u</span><span class="i-l" style="--di:2">b</span><span class="i-l" style="--di:3">e</span></div><div class="i-word"><span class="i-l i-l-red" style="--di:4">F</span><span class="i-l i-l-red" style="--di:5">e</span><span class="i-l i-l-red" style="--di:6">t</span><span class="i-l i-l-red" style="--di:7">c</span><span class="i-l i-l-red" style="--di:8">h</span></div>
     </div>
     <div class="i-sub">YouTube Downloader API</div>
     <div class="i-badges">
@@ -1139,6 +1261,7 @@ function buildHtml(version: string, baseUrl: string): string {
       <span class="i-badge">by MJL</span>
     </div>
     <div class="i-bar-track"><div class="i-bar" id="i-bar"></div></div>
+    <div class="i-counter" id="i-counter">0%</div>
     <div class="i-ver">v${version}</div>
   </div>
   <button class="i-skip" id="i-skip" onclick="skipIntro()">Skip</button>
@@ -1628,18 +1751,35 @@ function skipIntro(){
 }
 (function(){
   var bar=document.getElementById('i-bar');
-  var intro=document.getElementById('intro');
+  var counterEl=document.getElementById('i-counter');
+  var reducedMotion=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   requestAnimationFrame(function(){ requestAnimationFrame(function(){
     if(bar) bar.style.width='100%';
   }); });
+  if(counterEl && !reducedMotion){
+    var cnt=0;
+    var cntIntvl=setInterval(function(){
+      cnt=Math.min(100,cnt+1);
+      counterEl.textContent=cnt+'%';
+      if(cnt>=100) clearInterval(cntIntvl);
+    },36);
+  }
   var timer=setTimeout(function(){ if(!introSkipped) endIntro(); }, 5000);
   window._introTimer=timer;
 })();
 function endIntro(){
   var intro=document.getElementById('intro');
   if(!intro||intro.style.display==='none')return;
-  intro.classList.add('out');
-  setTimeout(function(){ intro.style.display='none'; showTerms(); }, 680);
+  var reducedMotion=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(reducedMotion){ intro.style.display='none'; showTerms(); return; }
+  var wrap=intro.querySelector('.i-wrap');
+  if(wrap){ wrap.style.transition='opacity .25s ease'; wrap.style.opacity='0'; }
+  var scanline=document.getElementById('intro-scanline');
+  if(scanline) scanline.style.display='none';
+  setTimeout(function(){
+    intro.classList.add('splitting');
+    setTimeout(function(){ intro.style.display='none'; showTerms(); }, 740);
+  }, 180);
 }
 
 /* ════════════════════════════════
@@ -2125,6 +2265,52 @@ async function fetchEp(n){
     setBtnDefault(n);
   }
 }
+
+/* ════════════════════════════════
+   NAVBAR SCROLL
+════════════════════════════════ */
+(function(){
+  var nav=document.querySelector('.topbar');
+  if(!nav) return;
+  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY > 60); }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+})();
+
+/* ════════════════════════════════
+   CARD 3D TILT
+════════════════════════════════ */
+(function(){
+  if(window.matchMedia('(hover:none)').matches) return;
+  if(window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  document.querySelectorAll('.ep-card').forEach(function(card){
+    card.addEventListener('mousemove',function(e){
+      var rect=card.getBoundingClientRect();
+      var dx=(e.clientX-rect.left-rect.width/2)/rect.width;
+      var dy=(e.clientY-rect.top-rect.height/2)/rect.height;
+      card.style.transform='perspective(700px) rotateY('+(dx*5)+'deg) rotateX('+(-dy*3.5)+'deg) translateY(-2px)';
+    });
+    card.addEventListener('mouseleave',function(){
+      card.style.transform='';
+    });
+  });
+})();
+
+/* ════════════════════════════════
+   AURORA HUE SHIFT ON SCROLL
+════════════════════════════════ */
+(function(){
+  if(window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  var aurora=document.getElementById('aurora');
+  if(!aurora) return;
+  function onScroll(){
+    var max=document.body.scrollHeight-window.innerHeight||1;
+    var pct=Math.min(1, window.scrollY/max);
+    var hue=Math.round(pct*14);
+    aurora.style.filter='hue-rotate('+hue+'deg)';
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+})();
 
 /* ════════════════════════════════
    HOST BADGE
