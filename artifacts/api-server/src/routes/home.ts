@@ -5,9 +5,21 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.2.0",
+    version: "1.2.1",
     date: "2026-05-16",
     tag: "current",
+    notes: [
+      "Removed Skip button from intro — sequence plays through cleanly without the option to skip",
+      "Removed YouTube video preview from V1 result card — thumbnail still shows, iframe player removed for performance",
+      "Performance: noise grain texture is now static — eliminates constant full-viewport repaint that caused lag on low-end devices",
+      "Performance: hero particle count reduced from 60 to 35; canvas capped at 30 fps; line connections disabled on narrow screens",
+      "Performance: card 3D tilt handler throttled with requestAnimationFrame — eliminates layout thrash on every mousemove",
+    ],
+  },
+  {
+    version: "1.2.0",
+    date: "2026-05-16",
+    tag: "",
     notes: [
       "VFX: layered noise grain texture breathes over the aurora at all times — background feels alive even when idle",
       "VFX: intro letters materialise one by one left-to-right; a 0→100% counter fills in sync; screen splits on exit — top half rises, bottom half drops — revealing the site like a curtain",
@@ -322,22 +334,10 @@ function buildHtml(version: string, baseUrl: string): string {
        NOISE GRAIN
     ══════════════════════════════════════ */
     #grain {
-      position: fixed; inset: -50%; z-index: 1; pointer-events: none;
-      width: 200%; height: 200%;
-      opacity: .038; mix-blend-mode: overlay; will-change: background-position;
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      opacity: .04; mix-blend-mode: overlay;
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      background-repeat: repeat; background-size: 256px 256px;
-      animation: grain-shift .14s steps(1) infinite;
-    }
-    @keyframes grain-shift {
-      0%   { background-position: 0 0; }
-      14%  { background-position: 80px -40px; }
-      28%  { background-position: -60px 80px; }
-      42%  { background-position: 40px 60px; }
-      57%  { background-position: -80px -20px; }
-      71%  { background-position: 20px -80px; }
-      85%  { background-position: -40px 40px; }
-      100% { background-position: 60px -60px; }
+      background-repeat: repeat; background-size: 200px 200px;
     }
 
     /* ══════════════════════════════════════
@@ -473,15 +473,6 @@ function buildHtml(version: string, baseUrl: string): string {
       margin-top: 12px; animation: fade-up-soft .5s ease both 1.65s;
       letter-spacing: 1px;
     }
-    .i-skip {
-      position: absolute; bottom: 32px; right: 32px; z-index: 5;
-      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
-      color: var(--text3); font-size: .65rem; font-weight: 600; letter-spacing: 1px;
-      padding: 6px 16px; border-radius: 20px; cursor: pointer;
-      animation: fade-up-soft .4s ease both 1.5s;
-      transition: all .2s; font-family: var(--font);
-    }
-    .i-skip:hover { background: rgba(255,255,255,.08); color: var(--text2); border-color: rgba(255,255,255,.15); }
     @keyframes fade-up-soft { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     #intro.out { animation: intro-exit .65s var(--ease-in-out) forwards; }
     @keyframes intro-exit {
@@ -949,35 +940,6 @@ function buildHtml(version: string, baseUrl: string): string {
       padding: 2px 8px; border-radius: 4px; letter-spacing: .5px; text-transform: uppercase;
       border: 1px solid rgba(255,0,0,.2); backdrop-filter: blur(6px);
     }
-    .r-play-overlay {
-      position: absolute; inset: 0; z-index: 3;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-      background: rgba(0,0,0,.32); cursor: pointer; transition: background .25s;
-    }
-    .r-play-overlay:hover { background: rgba(0,0,0,.5); }
-    .r-play-circle {
-      width: 58px; height: 58px; border-radius: 50%;
-      background: rgba(220,0,0,.92); display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 30px rgba(255,0,0,.55), 0 8px 24px rgba(0,0,0,.5);
-      transition: transform .25s var(--ease-spring), box-shadow .25s;
-    }
-    .r-play-overlay:hover .r-play-circle { transform: scale(1.12); box-shadow: 0 0 45px rgba(255,0,0,.75), 0 12px 32px rgba(0,0,0,.6); }
-    .r-play-circle svg { width: 22px; height: 22px; fill: #fff; margin-left: 4px; }
-    .r-play-label { font-size: .64rem; font-weight: 800; color: rgba(255,255,255,.7); letter-spacing: 1.5px; text-transform: uppercase; }
-    .r-countdown-wrap { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
-    .r-ring-svg { width: 90px; height: 90px; transform: rotate(-90deg); }
-    .r-ring-bg { fill: none; stroke: rgba(255,255,255,.1); stroke-width: 4; }
-    .r-ring-arc { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 201; stroke-dashoffset: 201; transition: stroke-dashoffset 5s linear; filter: drop-shadow(0 0 6px var(--red)); }
-    .r-countdown-n { position: absolute; font-size: 1.9rem; font-weight: 900; color: var(--text); text-shadow: 0 0 24px rgba(255,0,0,.6); }
-    .r-skip-btn {
-      margin-top: 12px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18);
-      color: rgba(255,255,255,.6); font-size: .64rem; font-weight: 700; padding: 5px 14px;
-      border-radius: 7px; cursor: pointer; transition: all .18s; letter-spacing: .6px; font-family: var(--font);
-    }
-    .r-skip-btn:hover { background: rgba(255,255,255,.2); color: #fff; }
-    .r-yt-wrap { position: absolute; inset: 0; z-index: 5; display: none; animation: yt-fade-in .5s ease both; }
-    @keyframes yt-fade-in { from { opacity: 0; } to { opacity: 1; } }
-    .r-yt-wrap > div, .r-yt-wrap iframe { width: 100% !important; height: 100% !important; border: none; display: block; }
     .r-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .r-title { font-size: .9rem; font-weight: 700; color: var(--text); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .r-author { font-size: .74rem; color: var(--blue); text-decoration: none; font-weight: 600; transition: color .18s; }
@@ -1264,7 +1226,6 @@ function buildHtml(version: string, baseUrl: string): string {
     <div class="i-counter" id="i-counter">0%</div>
     <div class="i-ver">v${version}</div>
   </div>
-  <button class="i-skip" id="i-skip" onclick="skipIntro()">Skip</button>
 </div>
 
 <!-- ══════════════════════════════════════
@@ -1486,21 +1447,6 @@ function buildHtml(version: string, baseUrl: string): string {
                   <img id="r-thumb-img" src="" alt="" class="r-thumb-img"/>
                   <span class="r-dur" id="r-dur" style="display:none"></span>
                   <span class="r-cached-badge" id="r-cached-b"></span>
-                  <div class="r-play-overlay" id="r-play-overlay" onclick="startPreview()">
-                    <div class="r-play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-                    <span class="r-play-label">Preview</span>
-                  </div>
-                  <div class="r-countdown-wrap" id="r-countdown-wrap" style="display:none">
-                    <svg class="r-ring-svg" viewBox="0 0 80 80">
-                      <circle class="r-ring-bg" cx="40" cy="40" r="32"/>
-                      <circle class="r-ring-arc" id="r-ring-arc" cx="40" cy="40" r="32"/>
-                    </svg>
-                    <span class="r-countdown-n" id="r-countdown-n">5</span>
-                    <button class="r-skip-btn" onclick="skipCountdown()">Skip</button>
-                  </div>
-                  <div class="r-yt-wrap" id="r-yt-wrap">
-                    <div id="r-yt-player"></div>
-                  </div>
                 </div>
                 <div class="r-body">
                   <div class="r-title" id="r-title"></div>
@@ -1744,11 +1690,6 @@ function addRipple(e){
    INTRO
 ════════════════════════════════ */
 var introSkipped=false;
-function skipIntro(){
-  if(introSkipped)return;
-  introSkipped=true;
-  endIntro();
-}
 (function(){
   var bar=document.getElementById('i-bar');
   var counterEl=document.getElementById('i-counter');
@@ -1843,7 +1784,8 @@ function initParticles(){
   PW=PCV.width=hero.offsetWidth;
   PH=PCV.height=hero.offsetHeight;
   PARTS=[];
-  for(var i=0;i<60;i++){
+  var count=PW<640?20:35;
+  for(var i=0;i<count;i++){
     PARTS.push({
       x:Math.random()*PW,y:Math.random()*PH,
       vx:(Math.random()-.5)*.5,vy:(Math.random()-.5)*.5,
@@ -1855,8 +1797,13 @@ function initParticles(){
   window.addEventListener('resize',function(){ PW=PCV.width=hero.offsetWidth; PH=PCV.height=hero.offsetHeight; });
   if(!RAF_RUNNING){ RAF_RUNNING=true; tickParticles(); }
 }
-function tickParticles(){
+var _ptLastT=0;
+var _ptLines=window.innerWidth>=640;
+function tickParticles(ts){
   requestAnimationFrame(tickParticles);
+  if(document.hidden) return;
+  if(ts-_ptLastT<33) return;
+  _ptLastT=ts;
   PCTX.clearRect(0,0,PW,PH);
   for(var i=0;i<PARTS.length;i++){
     var p=PARTS[i];
@@ -1869,12 +1816,14 @@ function tickParticles(){
     if(p.y<0){p.y=0;p.vy*=-1;} if(p.y>PH){p.y=PH;p.vy*=-1;}
     PCTX.beginPath(); PCTX.arc(p.x,p.y,p.r,0,6.2832);
     PCTX.fillStyle='rgba(255,255,255,'+p.a+')'; PCTX.fill();
-    for(var j=i+1;j<PARTS.length;j++){
-      var q=PARTS[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<120){
-        PCTX.beginPath(); PCTX.moveTo(p.x,p.y); PCTX.lineTo(q.x,q.y);
-        PCTX.strokeStyle='rgba(255,80,80,'+(0.1*(1-d/120))+')';
-        PCTX.lineWidth=.7; PCTX.stroke();
+    if(_ptLines){
+      for(var j=i+1;j<PARTS.length;j++){
+        var q=PARTS[j],dx=p.x-q.x,dy=p.y-q.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){
+          PCTX.beginPath(); PCTX.moveTo(p.x,p.y); PCTX.lineTo(q.x,q.y);
+          PCTX.strokeStyle='rgba(255,80,80,'+(0.1*(1-d/120))+')';
+          PCTX.lineWidth=.7; PCTX.stroke();
+        }
       }
     }
   }
@@ -1965,11 +1914,6 @@ function smOutsideClick(e){ if(e.target===document.getElementById('sm-overlay'))
 var rawStore={0:'',1:'',2:'',3:'',4:''};
 var urlStore={0:'',1:'',2:'',3:'',4:''};
 var descExpanded=false;
-var v1VideoId='';
-var ytPlayerInstance=null;
-var ytApiReady=false;
-var ytApiCallbacks=[];
-var cdTimer=null,cdInterval=null;
 
 /* ════════════════════════════════
    UTILS
@@ -2075,61 +2019,6 @@ function toggleDesc(){
   if(!descExpanded){ setTimeout(function(){ var c=document.getElementById('rcard0'); if(c) c.scrollIntoView({behavior:'smooth',block:'nearest'}); },50); }
 }
 
-/* ════════════════════════════════
-   VIDEO PREVIEW
-════════════════════════════════ */
-function resetVideoPreview(){
-  clearTimers();
-  sv('r-play-overlay',true,'flex'); sv('r-countdown-wrap',false); sv('r-yt-wrap',false);
-  var arc=document.getElementById('r-ring-arc');
-  if(arc){ arc.style.transition='none'; arc.style.strokeDashoffset='201'; }
-  if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
-  var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
-  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='1';
-}
-function clearTimers(){ if(cdTimer){clearTimeout(cdTimer);cdTimer=null;} if(cdInterval){clearInterval(cdInterval);cdInterval=null;} }
-function startPreview(){
-  if(!v1VideoId)return;
-  sv('r-play-overlay',false); sv('r-countdown-wrap',true,'flex');
-  document.getElementById('r-countdown-n').textContent='5';
-  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='.3';
-  var arc=document.getElementById('r-ring-arc');
-  arc.style.transition='none'; arc.style.strokeDashoffset='201';
-  requestAnimationFrame(function(){ requestAnimationFrame(function(){ arc.style.transition='stroke-dashoffset 5s linear'; arc.style.strokeDashoffset='0'; }); });
-  var secs=4;
-  cdInterval=setInterval(function(){ document.getElementById('r-countdown-n').textContent=String(secs); secs--; if(secs<0){clearInterval(cdInterval);cdInterval=null;} },1000);
-  cdTimer=setTimeout(function(){ launchVideo(); },5000);
-}
-function skipCountdown(){ clearTimers(); launchVideo(); }
-function launchVideo(){
-  sv('r-countdown-wrap',false);
-  var img=document.getElementById('r-thumb-img');
-  if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
-  var wrap=document.getElementById('r-yt-wrap'); wrap.style.display='block';
-  withYtApi(function(){
-    if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
-    var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
-    ytPlayerInstance=new YT.Player('r-yt-player',{
-      videoId:v1VideoId,width:'100%',height:'100%',
-      playerVars:{autoplay:1,rel:0,modestbranding:1,playsinline:1,controls:1},
-      events:{onReady:function(e){ e.target.playVideo(); }}
-    });
-  });
-}
-function withYtApi(cb){
-  if(ytApiReady){ cb(); return; }
-  ytApiCallbacks.push(cb);
-  if(!document.getElementById('yt-iframe-api')){
-    var s=document.createElement('script');
-    s.id='yt-iframe-api'; s.src='https://www.youtube.com/iframe_api';
-    document.head.appendChild(s);
-  }
-}
-window.onYouTubeIframeAPIReady=function(){
-  ytApiReady=true;
-  ytApiCallbacks.forEach(function(cb){ cb(); });
-  ytApiCallbacks=[];
-};
 
 /* ════════════════════════════════
    BTN RESET
@@ -2154,7 +2043,7 @@ async function fetchEp(n){
     :'<span>Fetching\u2026</span>';
 
   sv('skel'+n,true,'flex'); sv('res'+n,false);
-  if(n===0){ sv('rcard0',false); sv('curl0',false); resetVideoPreview(); }
+  if(n===0){ sv('rcard0',false); sv('curl0',false); }
   if(n===3){ sv('v2card',false); sv('curl3',false); }
   if(n===4){ sv('v3list',false); sv('curl4',false); }
 
@@ -2204,11 +2093,9 @@ async function fetchEp(n){
     if(n===0&&typeof data==='object'&&data&&data.success){
       var info=data.info||{};
       var media=data.media||{};
-      v1VideoId=data.video_id||'';
       var thumbEl=document.getElementById('r-thumb-img');
       thumbEl.src=info.thumbnail||''; thumbEl.alt=info.title||'';
       thumbEl.style.opacity='1'; thumbEl.style.transition='opacity .55s ease';
-      sv('r-play-overlay',!!v1VideoId,'flex');
       var durEl=document.getElementById('r-dur');
       durEl.textContent=info.duration||'';
       durEl.style.display=info.duration?'inline-block':'none';
@@ -2284,13 +2171,21 @@ async function fetchEp(n){
   if(window.matchMedia('(hover:none)').matches) return;
   if(window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
   document.querySelectorAll('.ep-card').forEach(function(card){
+    var raf=null,lastE=null;
     card.addEventListener('mousemove',function(e){
-      var rect=card.getBoundingClientRect();
-      var dx=(e.clientX-rect.left-rect.width/2)/rect.width;
-      var dy=(e.clientY-rect.top-rect.height/2)/rect.height;
-      card.style.transform='perspective(700px) rotateY('+(dx*5)+'deg) rotateX('+(-dy*3.5)+'deg) translateY(-2px)';
+      lastE=e;
+      if(raf) return;
+      raf=requestAnimationFrame(function(){
+        raf=null;
+        if(!lastE) return;
+        var rect=card.getBoundingClientRect();
+        var dx=(lastE.clientX-rect.left-rect.width/2)/rect.width;
+        var dy=(lastE.clientY-rect.top-rect.height/2)/rect.height;
+        card.style.transform='perspective(700px) rotateY('+(dx*5)+'deg) rotateX('+(-dy*3.5)+'deg) translateY(-2px)';
+      });
     });
     card.addEventListener('mouseleave',function(){
+      if(raf){ cancelAnimationFrame(raf); raf=null; } lastE=null;
       card.style.transform='';
     });
   });
