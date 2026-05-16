@@ -940,6 +940,29 @@ function buildHtml(version: string, baseUrl: string): string {
       padding: 2px 8px; border-radius: 4px; letter-spacing: .5px; text-transform: uppercase;
       border: 1px solid rgba(255,0,0,.2); backdrop-filter: blur(6px);
     }
+    .r-play-overlay {
+      position: absolute; inset: 0; z-index: 3;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      background: rgba(0,0,0,.32); cursor: pointer; transition: background .25s;
+    }
+    .r-play-overlay:hover { background: rgba(0,0,0,.5); }
+    .r-play-circle {
+      width: 58px; height: 58px; border-radius: 50%;
+      background: rgba(220,0,0,.92); display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 30px rgba(255,0,0,.55), 0 8px 24px rgba(0,0,0,.5);
+      transition: transform .25s var(--ease-spring), box-shadow .25s;
+    }
+    .r-play-overlay:hover .r-play-circle { transform: scale(1.12); box-shadow: 0 0 45px rgba(255,0,0,.75), 0 12px 32px rgba(0,0,0,.6); }
+    .r-play-circle svg { width: 22px; height: 22px; fill: #fff; margin-left: 4px; }
+    .r-play-label { font-size: .64rem; font-weight: 800; color: rgba(255,255,255,.7); letter-spacing: 1.5px; text-transform: uppercase; }
+    .r-countdown-wrap { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+    .r-ring-svg { width: 90px; height: 90px; transform: rotate(-90deg); }
+    .r-ring-bg { fill: none; stroke: rgba(255,255,255,.1); stroke-width: 4; }
+    .r-ring-arc { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 201; stroke-dashoffset: 201; transition: stroke-dashoffset 5s linear; filter: drop-shadow(0 0 6px var(--red)); }
+    .r-countdown-n { position: absolute; font-size: 1.9rem; font-weight: 900; color: var(--text); text-shadow: 0 0 24px rgba(255,0,0,.6); }
+    .r-yt-wrap { position: absolute; inset: 0; z-index: 5; display: none; animation: yt-fade-in .5s ease both; }
+    @keyframes yt-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .r-yt-wrap > div, .r-yt-wrap iframe { width: 100% !important; height: 100% !important; border: none; display: block; }
     .r-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .r-title { font-size: .9rem; font-weight: 700; color: var(--text); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .r-author { font-size: .74rem; color: var(--blue); text-decoration: none; font-weight: 600; transition: color .18s; }
@@ -1447,6 +1470,20 @@ function buildHtml(version: string, baseUrl: string): string {
                   <img id="r-thumb-img" src="" alt="" class="r-thumb-img"/>
                   <span class="r-dur" id="r-dur" style="display:none"></span>
                   <span class="r-cached-badge" id="r-cached-b"></span>
+                  <div class="r-play-overlay" id="r-play-overlay" onclick="startPreview()">
+                    <div class="r-play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+                    <span class="r-play-label">Preview</span>
+                  </div>
+                  <div class="r-countdown-wrap" id="r-countdown-wrap" style="display:none">
+                    <svg class="r-ring-svg" viewBox="0 0 80 80">
+                      <circle class="r-ring-bg" cx="40" cy="40" r="32"/>
+                      <circle class="r-ring-arc" id="r-ring-arc" cx="40" cy="40" r="32"/>
+                    </svg>
+                    <span class="r-countdown-n" id="r-countdown-n">5</span>
+                  </div>
+                  <div class="r-yt-wrap" id="r-yt-wrap">
+                    <div id="r-yt-player"></div>
+                  </div>
                 </div>
                 <div class="r-body">
                   <div class="r-title" id="r-title"></div>
@@ -1914,6 +1951,11 @@ function smOutsideClick(e){ if(e.target===document.getElementById('sm-overlay'))
 var rawStore={0:'',1:'',2:'',3:'',4:''};
 var urlStore={0:'',1:'',2:'',3:'',4:''};
 var descExpanded=false;
+var v1VideoId='';
+var ytPlayerInstance=null;
+var ytApiReady=false;
+var ytApiCallbacks=[];
+var cdTimer=null,cdInterval=null;
 
 /* ════════════════════════════════
    UTILS
@@ -2010,6 +2052,61 @@ function renderV3List(results){
 }
 
 /* ════════════════════════════════
+   VIDEO PREVIEW
+════════════════════════════════ */
+function resetVideoPreview(){
+  clearTimers();
+  sv('r-play-overlay',true,'flex'); sv('r-countdown-wrap',false); sv('r-yt-wrap',false);
+  var arc=document.getElementById('r-ring-arc');
+  if(arc){ arc.style.transition='none'; arc.style.strokeDashoffset='201'; }
+  if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
+  var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
+  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='1';
+}
+function clearTimers(){ if(cdTimer){clearTimeout(cdTimer);cdTimer=null;} if(cdInterval){clearInterval(cdInterval);cdInterval=null;} }
+function startPreview(){
+  if(!v1VideoId)return;
+  sv('r-play-overlay',false); sv('r-countdown-wrap',true,'flex');
+  document.getElementById('r-countdown-n').textContent='5';
+  var img=document.getElementById('r-thumb-img'); if(img) img.style.opacity='.3';
+  var arc=document.getElementById('r-ring-arc');
+  arc.style.transition='none'; arc.style.strokeDashoffset='201';
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ arc.style.transition='stroke-dashoffset 5s linear'; arc.style.strokeDashoffset='0'; }); });
+  var secs=4;
+  cdInterval=setInterval(function(){ document.getElementById('r-countdown-n').textContent=String(secs); secs--; if(secs<0){clearInterval(cdInterval);cdInterval=null;} },1000);
+  cdTimer=setTimeout(function(){ launchVideo(); },5000);
+}
+function launchVideo(){
+  sv('r-countdown-wrap',false);
+  var img=document.getElementById('r-thumb-img');
+  if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
+  var wrap=document.getElementById('r-yt-wrap'); wrap.style.display='block';
+  withYtApi(function(){
+    if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
+    var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
+    ytPlayerInstance=new YT.Player('r-yt-player',{
+      videoId:v1VideoId,width:'100%',height:'100%',
+      playerVars:{autoplay:1,rel:0,modestbranding:1,playsinline:1,controls:1},
+      events:{onReady:function(e){ e.target.playVideo(); }}
+    });
+  });
+}
+function withYtApi(cb){
+  if(ytApiReady){ cb(); return; }
+  ytApiCallbacks.push(cb);
+  if(!document.getElementById('yt-iframe-api')){
+    var s=document.createElement('script');
+    s.id='yt-iframe-api'; s.src='https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+  }
+}
+window.onYouTubeIframeAPIReady=function(){
+  ytApiReady=true;
+  ytApiCallbacks.forEach(function(cb){ cb(); });
+  ytApiCallbacks=[];
+};
+
+/* ════════════════════════════════
    DESC TOGGLE
 ════════════════════════════════ */
 function toggleDesc(){
@@ -2043,7 +2140,7 @@ async function fetchEp(n){
     :'<span>Fetching\u2026</span>';
 
   sv('skel'+n,true,'flex'); sv('res'+n,false);
-  if(n===0){ sv('rcard0',false); sv('curl0',false); }
+  if(n===0){ sv('rcard0',false); sv('curl0',false); resetVideoPreview(); }
   if(n===3){ sv('v2card',false); sv('curl3',false); }
   if(n===4){ sv('v3list',false); sv('curl4',false); }
 
@@ -2093,9 +2190,11 @@ async function fetchEp(n){
     if(n===0&&typeof data==='object'&&data&&data.success){
       var info=data.info||{};
       var media=data.media||{};
+      v1VideoId=data.video_id||'';
       var thumbEl=document.getElementById('r-thumb-img');
       thumbEl.src=info.thumbnail||''; thumbEl.alt=info.title||'';
       thumbEl.style.opacity='1'; thumbEl.style.transition='opacity .55s ease';
+      sv('r-play-overlay',!!v1VideoId,'flex');
       var durEl=document.getElementById('r-dur');
       durEl.textContent=info.duration||'';
       durEl.style.display=info.duration?'inline-block':'none';
