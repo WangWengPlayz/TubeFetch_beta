@@ -5,6 +5,8 @@ import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
 import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
+import { validateQuery, sanitizeError } from "../lib/validate";
+import { downloadRateLimit } from "../middleware/rate-limit";
 
 const router: IRouter = Router();
 
@@ -27,18 +29,21 @@ interface V3Video {
 interface V3Payload {
   credit: "MJL";
   version: string;
-  query: string;
   total_results: number;
   results: V3Video[];
+  // Note: "query" field intentionally omitted from the cached payload to avoid
+  // storing user-supplied strings inside shared cache entries. It is injected
+  // at response time from the validated input.
 }
 
 interface V3Response extends V3Payload {
+  query: string;
   ApiCount: number;
   ms: number;
 }
 
-// Fresh 5 min, stale-served up to 20 min (SWR window)
-const cache = new TtlCache<V3Payload>(300_000, 1_200_000);
+// Fresh 5 min, stale-served up to 20 min (SWR), max 500 entries.
+const cache = new TtlCache<V3Payload>(300_000, 1_200_000, 500);
 
 function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
   name: string | null;
@@ -82,13 +87,12 @@ async function fetchPayload(input: string): Promise<V3Payload> {
   return {
     credit: "MJL",
     version: VERSION,
-    query: input,
     total_results: results.length,
     results,
   };
 }
 
-router.get("/v3/q", async (req: Request, res: Response) => {
+router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
   const ApiCount = increment();
   res.on("finish", () => {
@@ -96,28 +100,26 @@ router.get("/v3/q", async (req: Request, res: Response) => {
     else recordError();
   });
 
-  const query = req.query[""] as string | undefined;
-
-  if (!query || !query.trim()) {
+  const validation = validateQuery(req.query[""]);
+  if (!validation.ok) {
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
       ApiCount,
       ms: Date.now() - t0,
-      error: "Missing query.",
+      error: validation.reason,
       usage: "/api/v3/q?=(search title or keyword)",
       examples: ["/api/v3/q?=top hits 2025", "/api/v3/q?=relaxing music"],
     });
     return;
   }
 
-  const input = query.trim();
+  const input = validation.value;
 
-  // Stale-while-revalidate: serve stale cache instantly, refresh in background
   const hit = cache.getWithMeta(input);
   if (hit) {
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.json({ ...hit.value, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ ...hit.value, query: input, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
     if (hit.stale) {
       setImmediate(() => {
         dedup(`swr-v3:${input}`, () => fetchPayload(input))
@@ -131,18 +133,16 @@ router.get("/v3/q", async (req: Request, res: Response) => {
   try {
     const payload = await dedup(`fetch-v3:${input}`, () => fetchPayload(input));
     cache.set(input, payload);
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.json({ ...payload, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ ...payload, query: input, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "v3 search error");
     res.status(500).json({
       credit: "MJL",
       version: VERSION,
       ApiCount,
       ms: Date.now() - t0,
-      error: message,
-      input,
+      error: sanitizeError(err),
     });
   }
 });

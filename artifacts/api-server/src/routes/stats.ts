@@ -13,8 +13,9 @@ router.get("/stats", async (_req, res) => {
     ApiCount: total,
     successCount,
     errorCount,
+    // Expose a simple boolean rather than the internal state-machine string
+    // ("idle", "connecting", "failed", "no-uri") which leaks infrastructure details.
     mongoConnected: mongoStatus === "connected",
-    mongoStatus,
     timestamp: new Date().toISOString(),
   });
 });

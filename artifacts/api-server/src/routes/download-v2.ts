@@ -2,9 +2,12 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
+import { BoundedMap } from "../lib/bounded-map";
 import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
 import { dedup, withTimeout } from "../lib/dedup";
+import { validateQuery, sanitizeError } from "../lib/validate";
+import { downloadRateLimit } from "../middleware/rate-limit";
 
 const _require = createRequire(import.meta.url);
 const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
@@ -25,11 +28,11 @@ interface V2Response extends V2Payload {
   ms: number;
 }
 
-// Fresh 5 min, stale-served up to 20 min (SWR window)
-const cache = new TtlCache<V2Payload>(300_000, 1_200_000);
+// Fresh 5 min, stale-served up to 20 min (SWR), max 500 entries.
+const cache = new TtlCache<V2Payload>(300_000, 1_200_000, 500);
 
-// Maps title query → videoId so repeat title lookups skip the yt-search call entirely
-const queryToId = new Map<string, string>();
+// BoundedMap (LRU, max 1000) — prevents heap exhaustion from unique-query flooding.
+const queryToId = new BoundedMap<string, string>(1_000);
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -59,7 +62,7 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<V2Payl
   };
 }
 
-router.get("/v2/q", async (req: Request, res: Response) => {
+router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
   const ApiCount = increment();
   res.on("finish", () => {
@@ -67,21 +70,20 @@ router.get("/v2/q", async (req: Request, res: Response) => {
     else recordError();
   });
 
-  const query = req.query[""] as string | undefined;
-
-  if (!query || !query.trim()) {
+  const validation = validateQuery(req.query[""]);
+  if (!validation.ok) {
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
       ApiCount,
       ms: Date.now() - t0,
-      error: "Missing query.",
+      error: validation.reason,
       usage: "/api/v2/q?=(YouTube URL or title)",
     });
     return;
   }
 
-  const input = query.trim();
+  const input = validation.value;
 
   try {
     let videoId: string | null = null;
@@ -96,13 +98,11 @@ router.get("/v2/q", async (req: Request, res: Response) => {
           ApiCount,
           ms: Date.now() - t0,
           error: "Could not extract a YouTube video ID from this URL.",
-          input,
         });
         return;
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     } else {
-      // Fast path: previously resolved title → videoId (skips the yt-search call entirely)
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
@@ -120,7 +120,6 @@ router.get("/v2/q", async (req: Request, res: Response) => {
             ApiCount,
             ms: Date.now() - t0,
             error: "No YouTube results found for this query.",
-            query: input,
           });
           return;
         }
@@ -130,10 +129,9 @@ router.get("/v2/q", async (req: Request, res: Response) => {
       }
     }
 
-    // Stale-while-revalidate: serve stale cache instantly, refresh in background
     const hit = cache.getWithMeta(videoId);
     if (hit) {
-      res.setHeader("Cache-Control", "public, max-age=300");
+      res.setHeader("Cache-Control", "private, no-store");
       res.json({ ...hit.value, ApiCount, ms: Date.now() - t0 } satisfies V2Response);
       if (hit.stale) {
         setImmediate(() => {
@@ -147,18 +145,16 @@ router.get("/v2/q", async (req: Request, res: Response) => {
 
     const payload = await dedup(`fetch-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl));
     cache.set(videoId, payload);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ ...payload, ApiCount, ms: Date.now() - t0 } satisfies V2Response);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
     req.log.error({ err, input }, "v2 YouTube download error");
     res.status(500).json({
       credit: "MJL",
       version: VERSION,
       ApiCount,
       ms: Date.now() - t0,
-      error: message,
-      input,
+      error: sanitizeError(err),
     });
   }
 });

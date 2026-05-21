@@ -3,15 +3,14 @@ import { VERSION } from "../lib/version";
 
 const router: IRouter = Router();
 
-const startedAt = new Date().toISOString();
-
 router.get("/uptime", (_req, res) => {
   res.json({
     version: VERSION,
     creditTo: "MJL",
     status: "online",
+    // Only expose relative uptime — exact start timestamps help attackers time
+    // requests around restarts (when in-memory rate-limit counters reset).
     uptime_seconds: Math.floor(process.uptime()),
-    started_at: startedAt,
     timestamp: new Date().toISOString(),
   });
 });

@@ -2,10 +2,13 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
+import { BoundedMap } from "../lib/bounded-map";
 import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
 import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
+import { validateQuery, sanitizeError } from "../lib/validate";
+import { downloadRateLimit } from "../middleware/rate-limit";
 
 const _require = createRequire(import.meta.url);
 const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
@@ -32,11 +35,15 @@ interface VideoResponse extends VideoPayload {
   ms: number;
 }
 
-// Fresh 5 min, stale-served up to 20 min (SWR window)
-const cache = new TtlCache<VideoPayload>(300_000, 1_200_000);
+// Fresh 5 min, stale-served up to 20 min (SWR), max 500 entries.
+// The size cap prevents heap exhaustion from unique-query flooding.
+const cache = new TtlCache<VideoPayload>(300_000, 1_200_000, 500);
 
-// Maps title query → videoId so repeat title lookups skip the yt-search call entirely
-const queryToId = new Map<string, string>();
+// Title → videoId lookup cache.
+// BoundedMap (LRU, max 1000) instead of a plain Map — a plain Map never
+// evicts entries, allowing an attacker to exhaust heap memory by sending
+// an endless stream of distinct title queries.
+const queryToId = new BoundedMap<string, string>(1_000);
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -130,7 +137,9 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoP
   };
 }
 
-router.get("/v1/q", async (req: Request, res: Response) => {
+// Per-endpoint rate limit (stricter than the global one) applied before any
+// handler logic — upstream calls are expensive and must be protected separately.
+router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
   const ApiCount = increment();
   res.on("finish", () => {
@@ -138,16 +147,16 @@ router.get("/v1/q", async (req: Request, res: Response) => {
     else recordError();
   });
 
-  const query = req.query[""] as string | undefined;
-
-  if (!query || !query.trim()) {
+  // Validate and sanitize the query parameter before any further processing
+  const validation = validateQuery(req.query[""]);
+  if (!validation.ok) {
     res.status(400).json({
       version: VERSION,
       success: false,
       creditTo: "MJL",
       ApiCount,
       ms: Date.now() - t0,
-      error: "Missing query.",
+      error: validation.reason,
       usage: "/api/v1/q?=(YouTube URL or song/video title)",
       examples: [
         "/api/v1/q?=lay me down sam smith",
@@ -158,7 +167,7 @@ router.get("/v1/q", async (req: Request, res: Response) => {
     return;
   }
 
-  const input = query.trim();
+  const input = validation.value;
 
   try {
     let videoId: string | null = null;
@@ -174,13 +183,11 @@ router.get("/v1/q", async (req: Request, res: Response) => {
           ApiCount,
           ms: Date.now() - t0,
           error: "Could not extract a YouTube video ID from this URL.",
-          input,
         });
         return;
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     } else {
-      // Fast path: previously resolved title → videoId (skips the yt-search call entirely)
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
@@ -199,7 +206,6 @@ router.get("/v1/q", async (req: Request, res: Response) => {
             ApiCount,
             ms: Date.now() - t0,
             error: "No YouTube results found for this query.",
-            query: input,
           });
           return;
         }
@@ -209,10 +215,13 @@ router.get("/v1/q", async (req: Request, res: Response) => {
       }
     }
 
-    // Stale-while-revalidate: serve stale cache instantly, refresh in background
     const hit = cache.getWithMeta(videoId);
     if (hit) {
-      res.setHeader("Cache-Control", "public, max-age=300");
+      // private: no-store — the server's SWR cache handles caching.
+      // "public" would let CDNs/shared proxies cache API responses, which:
+      //   1. breaks the ApiCount counter (served from proxy, counter not incremented)
+      //   2. enables cache-poisoning attacks at the CDN layer
+      res.setHeader("Cache-Control", "private, no-store");
       res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies VideoResponse);
       if (hit.stale) {
         setImmediate(() => {
@@ -226,19 +235,21 @@ router.get("/v1/q", async (req: Request, res: Response) => {
 
     const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl));
     cache.set(videoId, payload);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, no-store");
     res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies VideoResponse);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Log the full error server-side for debugging...
     req.log.error({ err, input }, "YouTube download error");
+    // ...but never send raw error internals to the client.
+    // Raw errors can expose: file paths, dependency names/versions,
+    // upstream API error messages, internal timeout labels.
     res.status(500).json({
       version: VERSION,
       success: false,
       creditTo: "MJL",
       ApiCount,
       ms: Date.now() - t0,
-      error: message,
-      input,
+      error: sanitizeError(err),
     });
   }
 });
