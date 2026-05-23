@@ -5,9 +5,23 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.2.2",
+    date: "2026-05-23",
+    tag: "current",
+    notes: [
+      "Security: global rate limiting (300 req / 15 min) and per-endpoint download rate limiting (60 req / min) via express-rate-limit — protects upstream APIs from abuse",
+      "Security: HTTP security headers hardened with Helmet — HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options enforced on all responses",
+      "Security: query input validation added — 500-character max length and control-character stripping before any upstream call",
+      "Security: error responses sanitised — internal file paths, dependency names and timeout labels are never sent to clients",
+      "Security: BoundedMap (LRU, max 1 000) replaces unbounded Maps — eliminates heap-exhaustion from unique-query flooding",
+      "Security: TtlCache capped at 500 entries — prevents memory growth under sustained unique-URL traffic",
+      "Reliability: downloader replaced with a two-source fallback chain — @distube/ytdl-core (direct YouTube CDN, no third-party relay) is tried first; nayan-media-downloaders is used automatically if the primary fails — API stays up even when either source goes down",
+    ],
+  },
+  {
     version: "1.2.1",
     date: "2026-05-16",
-    tag: "current",
+    tag: "",
     notes: [
       "Removed Skip button from intro — sequence plays through cleanly without the option to skip",
       "Removed YouTube video preview from V1 result card — thumbnail still shows, iframe player removed for performance",
