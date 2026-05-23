@@ -1,5 +1,4 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
 import { BoundedMap } from "../lib/bounded-map";
@@ -9,9 +8,7 @@ import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-
-const _require = createRequire(import.meta.url);
-const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
+import { fetchDownloadLinks } from "../lib/downloader";
 
 const router: IRouter = Router();
 
@@ -90,23 +87,22 @@ function resolveThumbnail(
 async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoPayload> {
   const [infoResult, dlResult] = await Promise.allSettled([
     dedup(`yts-vid:${videoId}`, () => withTimeout(yts({ videoId }), 15_000, "yt-search-id")),
-    dedup(`ytdown:${videoId}`, () => withTimeout(ytdown(youtubeUrl), 20_000, "ytdown")),
+    dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
   ]);
 
   const info = infoResult.status === "fulfilled" ? infoResult.value : null;
-  const dl = dlResult.status === "fulfilled" ? dlResult.value : null;
-  const dlData = (dl?.status ? dl.data : null) ?? null;
+  const links = dlResult.status === "fulfilled" ? dlResult.value : null;
 
   const { name: authorName, url: channelUrl } = resolveAuthor(info?.author);
-  const thumbnail = resolveThumbnail(videoId, info, dlData?.thumbnail);
+  const thumbnail = resolveThumbnail(videoId, info, links?.thumbnail ?? undefined);
   const category = inferCategory(
     info?.keywords ?? [],
-    info?.title ?? dlData?.title ?? "",
+    info?.title ?? "",
     info?.description ?? "",
   );
 
   const rawInfo: Record<string, unknown> = {
-    title:            info?.title ?? dlData?.title ?? null,
+    title:            info?.title ?? null,
     author:           authorName,
     channel_url:      channelUrl,
     thumbnail,
@@ -119,8 +115,8 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoP
     keywords:         info?.keywords ?? [],
   };
 
-  const mp4Url = dlData?.video ?? dlData?.high ?? null;
-  const mp3Url = dlData?.audio ?? dlData?.low ?? null;
+  const mp4Url = links?.mp4 ?? null;
+  const mp3Url = links?.mp3 ?? null;
 
   return {
     version: VERSION,

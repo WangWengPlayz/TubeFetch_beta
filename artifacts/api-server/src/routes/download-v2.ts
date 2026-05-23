@@ -1,5 +1,4 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createRequire } from "module";
 import yts from "yt-search";
 import { TtlCache } from "../lib/cache";
 import { BoundedMap } from "../lib/bounded-map";
@@ -8,9 +7,7 @@ import { increment, recordSuccess, recordError } from "../lib/counter";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-
-const _require = createRequire(import.meta.url);
-const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
+import { fetchDownloadLinks } from "../lib/downloader";
 
 const router: IRouter = Router();
 
@@ -47,17 +44,16 @@ function isUrl(input: string): boolean {
 }
 
 async function fetchPayload(videoId: string, youtubeUrl: string): Promise<V2Payload> {
-  const dl = await dedup(
-    `ytdown:${videoId}`,
-    () => withTimeout(ytdown(youtubeUrl), 20_000, "ytdown"),
+  const links = await dedup(
+    `dl:${videoId}`,
+    () => fetchDownloadLinks(youtubeUrl),
   );
-  const dlData = (dl?.status ? dl.data : null) ?? null;
   return {
     credit: "MJL",
     version: VERSION,
     media: {
-      mp4: dlData?.video ?? dlData?.high ?? null,
-      mp3: dlData?.audio ?? dlData?.low ?? null,
+      mp4: links?.mp4 ?? null,
+      mp3: links?.mp3 ?? null,
     },
   };
 }
