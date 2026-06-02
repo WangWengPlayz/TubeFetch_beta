@@ -111,7 +111,9 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
           `yts-id:${videoId}`,
           () => withTimeout(yts({ videoId }), 15_000, "yt-search"),
         );
-        title = info.videos[0]?.title ?? null;
+        // yts({ videoId }) returns a VideoMetadataResult — title is directly
+        // on the object, NOT nested inside a .videos[] array like a search result.
+        title = (info as unknown as { title?: string }).title ?? null;
         if (title) videoIdToTitle.set(videoId, title);
       }
     } else {
