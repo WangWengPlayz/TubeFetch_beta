@@ -5,9 +5,23 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.2.4",
+    version: "1.2.5",
     date: "2026-06-02",
     tag: "current",
+    notes: [
+      "Performance: v2 URL requests now fetch metadata and download links in parallel — cuts response time roughly in half vs the previous sequential approach",
+      "Performance: v1 keyword queries now reuse the search result metadata instead of making a redundant second <code>yts({ videoId })</code> lookup — eliminates an extra network round-trip",
+      "v2 upgraded from a links-only response to a full metadata response — now returns <code>video_id</code>, <code>video_url</code>, <code>short_url</code>, <code>channel_name</code>, <code>channel_url</code>, <code>thumbnail</code>, <code>duration</code>, <code>views</code>, <code>published</code>, and <code>category</code> alongside download links",
+      "v2: response now includes <code>cached</code> flag — indicates whether the result was served from the in-memory SWR cache",
+      "v1: response now includes <code>short_url</code> (<code>https://youtu.be/…</code>) at the top level alongside the full canonical URL",
+      "v3: each result now includes <code>short_url</code> (<code>https://youtu.be/…</code>) and a <code>keywords</code> array",
+      "v3: response now includes <code>cached</code> flag",
+    ],
+  },
+  {
+    version: "1.2.4",
+    date: "2026-06-02",
+    tag: "",
     notes: [
       "UI/UX: complete visual redesign — refined color system, improved typography, spacing, and layout consistency across all pages",
       "UI/UX: hero section upgraded with ★★★★★ premium badge, larger title, and enhanced stats bar with bigger numbers and inner shimmer",

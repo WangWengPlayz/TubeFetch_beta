@@ -14,6 +14,7 @@ interface V3Video {
   rank: number;
   video_id: string;
   url: string;
+  short_url: string;
   title: string;
   description: string | null;
   channel_name: string | null;
@@ -23,6 +24,7 @@ interface V3Video {
   duration_seconds: number | null;
   thumbnail: string;
   views: number | null;
+  keywords: string[];
   category: string;
 }
 
@@ -38,6 +40,7 @@ interface V3Payload {
 
 interface V3Response extends V3Payload {
   query: string;
+  cached: boolean;
   ApiCount: number;
   ms: number;
 }
@@ -66,11 +69,13 @@ async function fetchPayload(input: string): Promise<V3Payload> {
     const thumbnail =
       v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
     const desc = v.description ?? "";
-    const category = inferCategory(v.keywords ?? [], v.title ?? "", desc);
+    const keywords = v.keywords ?? [];
+    const category = inferCategory(keywords, v.title ?? "", desc);
     return {
       rank: i + 1,
       video_id: v.videoId,
       url: `https://www.youtube.com/watch?v=${v.videoId}`,
+      short_url: `https://youtu.be/${v.videoId}`,
       title: v.title ?? "",
       description: desc || null,
       channel_name: channelName,
@@ -80,6 +85,7 @@ async function fetchPayload(input: string): Promise<V3Payload> {
       duration_seconds: v.duration?.seconds ?? null,
       thumbnail,
       views: v.views ?? null,
+      keywords,
       category,
     };
   });
@@ -139,7 +145,7 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
   const hit = cache.getWithMeta(input);
   if (hit) {
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ ...hit.value, query: input, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
+    res.json({ ...hit.value, query: input, cached: true, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
     if (hit.stale) {
       setImmediate(() => {
         dedup(`swr-v3:${input}`, () => fetchPayload(input))
@@ -154,7 +160,7 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
     const payload = await dedup(`fetch-v3:${input}`, () => fetchPayload(input));
     cache.set(input, payload);
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ ...payload, query: input, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
+    res.json({ ...payload, query: input, cached: false, ApiCount, ms: Date.now() - t0 } satisfies V3Response);
   } catch (err: unknown) {
     req.log.error({ err, input }, "v3 search error");
     res.status(500).json({

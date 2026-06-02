@@ -18,6 +18,7 @@ interface VideoPayload {
   creditTo: "MJL";
   video_id: string;
   url: string;
+  short_url: string;
   category: string;
   info: Record<string, unknown>;
   media: {
@@ -33,13 +34,9 @@ interface VideoResponse extends VideoPayload {
 }
 
 // Fresh 5 min, stale-served up to 20 min (SWR), max 500 entries.
-// The size cap prevents heap exhaustion from unique-query flooding.
 const cache = new TtlCache<VideoPayload>(300_000, 1_200_000, 500);
 
-// Title → videoId lookup cache.
-// BoundedMap (LRU, max 1000) instead of a plain Map — a plain Map never
-// evicts entries, allowing an attacker to exhaust heap memory by sending
-// an endless stream of distinct title queries.
+// Title → videoId lookup cache (LRU, max 1000).
 const queryToId = new BoundedMap<string, string>(1_000);
 
 const YT_URL_RE =
@@ -84,14 +81,39 @@ function resolveThumbnail(
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoPayload> {
-  const [infoResult, dlResult] = await Promise.allSettled([
-    dedup(`yts-vid:${videoId}`, () => withTimeout(yts({ videoId }), 15_000, "yt-search-id")),
-    dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
-  ]);
+/**
+ * Fetch and assemble the full video payload.
+ *
+ * @param preInfo - Pre-loaded yts.VideoResult from a keyword search.
+ *   When provided, the redundant second yts({ videoId }) lookup is skipped
+ *   and only the download fetch runs — saving a full network round-trip.
+ *   Pass null for URL-based requests to run yts + download in parallel.
+ */
+async function fetchPayload(
+  videoId: string,
+  youtubeUrl: string,
+  preInfo: yts.VideoResult | null = null,
+): Promise<VideoPayload> {
+  let info: yts.VideoResult | null = preInfo;
+  let links: Awaited<ReturnType<typeof fetchDownloadLinks>> | null = null;
 
-  const info = infoResult.status === "fulfilled" ? infoResult.value : null;
-  const links = dlResult.status === "fulfilled" ? dlResult.value : null;
+  if (info) {
+    // Keyword path — metadata already in hand from the search result.
+    // Only fetch download links (no second yts call needed).
+    links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
+  } else {
+    // URL path — run metadata lookup and download fetch in parallel.
+    const [infoResult, dlResult] = await Promise.allSettled([
+      dedup(`yts-vid:${videoId}`, () =>
+        withTimeout(yts({ videoId }), 15_000, "yt-search-id"),
+      ),
+      dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
+    ]);
+    info = infoResult.status === "fulfilled"
+      ? (infoResult.value as unknown as yts.VideoResult)
+      : null;
+    links = dlResult.status === "fulfilled" ? dlResult.value : null;
+  }
 
   const { name: authorName, url: channelUrl } = resolveAuthor(info?.author);
   const thumbnail = resolveThumbnail(videoId, info, links?.thumbnail ?? undefined);
@@ -124,6 +146,7 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoP
     creditTo: "MJL",
     video_id: videoId,
     url: youtubeUrl,
+    short_url: `https://youtu.be/${videoId}`,
     category,
     info: clean(rawInfo),
     media: {
@@ -133,8 +156,6 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<VideoP
   };
 }
 
-// Per-endpoint rate limit (stricter than the global one) applied before any
-// handler logic — upstream calls are expensive and must be protected separately.
 router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
   const ApiCount = increment();
@@ -143,7 +164,6 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     else recordError();
   });
 
-  // Validate and sanitize the query parameter before any further processing
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
     res.status(400).json({
@@ -168,6 +188,7 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
   try {
     let videoId: string | null = null;
     let youtubeUrl: string;
+    let preInfo: yts.VideoResult | null = null;
 
     if (isUrl(input)) {
       videoId = extractVideoId(input);
@@ -183,11 +204,13 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
         return;
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      // preInfo stays null — fetchPayload runs yts + download in parallel.
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        // preInfo stays null — metadata comes from cache or parallel fetch.
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -208,20 +231,18 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
         videoId = first.videoId;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         queryToId.set(input, videoId);
+        // Pass the search result directly — avoids a redundant yts({ videoId }) call.
+        preInfo = first;
       }
     }
 
     const hit = cache.getWithMeta(videoId);
     if (hit) {
-      // private: no-store — the server's SWR cache handles caching.
-      // "public" would let CDNs/shared proxies cache API responses, which:
-      //   1. breaks the ApiCount counter (served from proxy, counter not incremented)
-      //   2. enables cache-poisoning attacks at the CDN layer
       res.setHeader("Cache-Control", "private, no-store");
       res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies VideoResponse);
       if (hit.stale) {
         setImmediate(() => {
-          dedup(`swr:${videoId}`, () => fetchPayload(videoId!, youtubeUrl))
+          dedup(`swr:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null))
             .then(payload => cache.set(videoId!, payload))
             .catch(() => {});
         });
@@ -229,16 +250,12 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
       return;
     }
 
-    const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl));
+    const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, preInfo));
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies VideoResponse);
   } catch (err: unknown) {
-    // Log the full error server-side for debugging...
     req.log.error({ err, input }, "YouTube download error");
-    // ...but never send raw error internals to the client.
-    // Raw errors can expose: file paths, dependency names/versions,
-    // upstream API error messages, internal timeout labels.
     res.status(500).json({
       version: VERSION,
       success: false,
