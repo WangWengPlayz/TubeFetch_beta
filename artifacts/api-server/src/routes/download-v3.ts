@@ -94,14 +94,14 @@ async function fetchPayload(input: string): Promise<V3Payload> {
 
 router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = increment();
-  res.on("finish", () => {
-    if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
-    else recordError();
-  });
 
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
+    const ApiCount = increment();
+    res.on("finish", () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
+      else recordError();
+    });
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
@@ -116,12 +116,12 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   const input = validation.value;
 
-  // v3 is a search endpoint — URLs are not accepted.
+  // v3 is a search-only endpoint — URLs are not accepted and do not count
+  // against ApiCount or the error tally since it is not a real API failure.
   if (/^https?:\/\//i.test(input)) {
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
-      ApiCount,
       ms: Date.now() - t0,
       error: "v3 only accepts search titles or keywords, not YouTube URLs. Use /api/v1/q or /api/v2/q for URL-based lookups.",
       usage: "/api/v3/q?=(search title or keyword)",
@@ -129,6 +129,12 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
     });
     return;
   }
+
+  const ApiCount = increment();
+  res.on("finish", () => {
+    if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
+    else recordError();
+  });
 
   const hit = cache.getWithMeta(input);
   if (hit) {
