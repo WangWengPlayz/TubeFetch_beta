@@ -68,14 +68,22 @@ export async function fetchDownloadLinks(youtubeUrl: string): Promise<DownloadLi
   } catch { /* fall through to source 2 */ }
 
   // ── Source 2: nayan-media-downloaders ────────────────────────────────────
-  const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
-  const dl = await withTimeout(ytdown(youtubeUrl), 20_000, "ytdown");
-  const data = (dl?.status ? dl.data : null) ?? null;
+  // Wrapped in its own try-catch — the upstream ymcdn.org relay can return
+  // unexpected shapes that cause the library to throw internally (e.g.
+  // "Cannot read properties of undefined (reading '0')"). We recover
+  // gracefully with null links rather than propagating a 500 to the caller.
+  try {
+    const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
+    const dl = await withTimeout(ytdown(youtubeUrl), 20_000, "ytdown");
+    const data = (dl?.status ? dl.data : null) ?? null;
 
-  return {
-    mp4: data?.video_hd ?? data?.video ?? data?.high ?? null,
-    mp3: data?.audio ?? data?.low ?? null,
-    // nayan returns the thumbnail as "thumb" in practice despite the type
-    thumbnail: data?.thumbnail ?? data?.thumb ?? null,
-  };
+    return {
+      mp4: data?.video_hd ?? data?.video ?? data?.high ?? null,
+      mp3: data?.audio ?? data?.low ?? null,
+      // nayan returns the thumbnail as "thumb" in practice despite the type
+      thumbnail: data?.thumbnail ?? data?.thumb ?? null,
+    };
+  } catch {
+    return { mp4: null, mp3: null, thumbnail: null };
+  }
 }

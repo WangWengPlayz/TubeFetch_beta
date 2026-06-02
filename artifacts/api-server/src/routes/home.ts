@@ -5,9 +5,24 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.2.3",
+    version: "1.2.4",
     date: "2026-06-02",
     tag: "current",
+    notes: [
+      "UI/UX: complete visual redesign — refined color system, improved typography, spacing, and layout consistency across all pages",
+      "UI/UX: hero section upgraded with ★★★★★ premium badge, larger title, and enhanced stats bar with bigger numbers and inner shimmer",
+      "UI/UX: v2 result card now displays the video title above download links when available",
+      "VFX: improved micro-interactions across buttons, cards, inputs, and modals — more refined easing and glow effects throughout",
+      "VFX: accent shifted to premium <code>#E50914</code> — consistent across all elements including cursor, aurora, buttons, borders, and badges",
+      "Performance: animations optimised — breathing glow cycle extended to 3 s, aurora orbs slightly reduced, reduced aurora intensity for lower GPU load",
+      "Reliability: v2 downloader now recovers gracefully when both sources fail — returns <code>null</code> media links instead of a 500 error",
+      "Bug fix: v2 no longer crashes with <em>Cannot read properties of undefined</em> when the nayan fallback source returns an unexpected response shape",
+    ],
+  },
+  {
+    version: "1.2.3",
+    date: "2026-06-02",
+    tag: "",
     notes: [
       "v2: response now includes <code>title</code> — the video title is returned alongside the MP4 &amp; MP3 download links",
       "v3: now rejects YouTube URLs with a 400 error — only titles and keywords are accepted; use v1 or v2 for URL-based lookups",
