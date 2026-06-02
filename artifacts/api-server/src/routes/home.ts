@@ -1038,15 +1038,7 @@ function buildHtml(version: string, baseUrl: string): string {
     .r-more:hover { color: #FF4444; }
     .r-dl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 
-    /* ── V2 QUICK RESULT ── */
-    .v2-card {
-      background: rgba(255,255,255,.022); border: 1px solid rgba(255,255,255,.08);
-      border-radius: var(--radius); padding: 20px 22px; margin-bottom: 14px;
-      animation: slide-up .32s var(--ease-spring) both;
-    }
-    .v2-title { font-size: .88rem; font-weight: 700; color: var(--text); line-height: 1.35; margin-bottom: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .v2-label { font-size: .6rem; font-weight: 800; color: var(--text4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-    .v2-dl { display: flex; gap: 8px; flex-wrap: wrap; }
+    /* ── V2 RESULT (reuses r-card/r-* classes) ── */
 
     /* ── V3 RESULT LIST ── */
     .v3-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; animation: slide-up .32s var(--ease-spring) both; }
@@ -1570,12 +1562,12 @@ function buildHtml(version: string, baseUrl: string): string {
       <div class="ep-header" onclick="toggleEp(3)">
         <span class="ep-method v2">GET</span>
         <span class="ep-path">/api/v2/q?=(url or title)</span>
-        <span class="ep-desc-label">Fast — links only <span class="ep-badge-fast">⚡ v2</span></span>
+        <span class="ep-desc-label">Fast — metadata + links <span class="ep-badge-fast">⚡ v2</span></span>
         <span class="ep-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Faster than v1 — skips all metadata, fetches only direct <code>MP4</code> &amp; <code>MP3</code> download links. Response includes <code>credit</code>, <code>version</code>, <code>ApiCount</code>, and <code>ms</code> timing. No title, no extra fields.</p>
+          <p class="ep-info">Fast full-metadata endpoint — returns <code>title</code>, <code>channel</code>, <code>thumbnail</code>, <code>duration</code>, <code>views</code>, <code>published</code>, <code>category</code>, <code>short_url</code>, and direct <code>MP4</code> &amp; <code>MP3</code> download links. URL requests fetch metadata and links in parallel for maximum speed. Response includes <code>video_id</code>, <code>video_url</code>, <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q3" type="text" placeholder="e.g. never gonna give you up  or  https://youtu.be/…" onkeydown="if(event.key==='Enter')fetchEp(3)" autocomplete="off"/>
             <button class="ep-fetch-btn ripple-container" id="btn3" onclick="addRipple(event);fetchEp(3)">
@@ -1599,10 +1591,19 @@ function buildHtml(version: string, baseUrl: string): string {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL
               </button>
             </div>
-            <div class="v2-card" id="v2card" style="display:none">
-              <div class="v2-title" id="v2-title-el" style="display:none"></div>
-              <div class="v2-label">Download Links</div>
-              <div class="v2-dl" id="v2-dl"></div>
+            <div class="r-card" id="v2card" style="display:none">
+              <div class="r-inner">
+                <div class="r-thumb">
+                  <img id="v2-thumb" src="" alt="" class="r-thumb-img" style="opacity:.3"/>
+                  <span class="r-dur" id="v2-dur" style="display:none"></span>
+                </div>
+                <div class="r-body">
+                  <div class="r-title" id="v2-title-el"></div>
+                  <a class="r-author" id="v2-author" href="#" target="_blank" rel="noopener noreferrer" style="display:none"></a>
+                  <div class="r-stats" id="v2-stats"></div>
+                  <div class="r-dl" id="v2-dl"></div>
+                </div>
+              </div>
             </div>
             <div class="json-actions">
               <span class="json-label">Raw Response</span>
@@ -2285,16 +2286,33 @@ async function fetchEp(n){
       sv('rcard0',true,'block');
     }
 
-    /* ── V2 quick card ── */
+    /* ── V2 rich card ── */
     if(n===3&&typeof data==='object'&&data&&data.media){
       var m=data.media;
-      var titleEl=document.getElementById('v2-title-el');
-      if(titleEl){ if(data.title){ titleEl.textContent=data.title; titleEl.style.display='block'; } else { titleEl.style.display='none'; } }
-      var v2html='';
-      if(m.mp4) v2html+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
-      if(m.mp3) v2html+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
-      if(!v2html) v2html='<span class="dl-none">No download links.</span>';
-      document.getElementById('v2-dl').innerHTML=v2html;
+      var v2ThumbEl=document.getElementById('v2-thumb');
+      if(v2ThumbEl){ v2ThumbEl.src=data.thumbnail?esc(data.thumbnail):''; v2ThumbEl.alt=esc(data.title||''); v2ThumbEl.style.opacity=data.thumbnail?'1':'.3'; }
+      var v2DurEl=document.getElementById('v2-dur');
+      if(v2DurEl){ v2DurEl.textContent=data.duration||''; v2DurEl.style.display=data.duration?'inline-block':'none'; }
+      var v2TitleEl=document.getElementById('v2-title-el');
+      if(v2TitleEl) v2TitleEl.textContent=data.title||'';
+      var v2AuthEl=document.getElementById('v2-author');
+      if(v2AuthEl){ if(data.channel_name){ v2AuthEl.textContent=data.channel_name; v2AuthEl.href=esc(data.channel_url||'#'); v2AuthEl.style.display='block'; } else { v2AuthEl.style.display='none'; } }
+      var v2StatsEl=document.getElementById('v2-stats');
+      if(v2StatsEl){
+        var v2sh='';
+        if(data.views) v2sh+='<span class="r-stat">'+fmtViews(data.views)+'</span>';
+        if(data.published) v2sh+='<span class="r-stat">'+esc(data.published)+'</span>';
+        if(data.duration_seconds&&!data.views&&!data.published) v2sh+='<span class="r-stat">'+esc(data.duration)+'</span>';
+        v2sh+='<span class="cat-badge" id="v2-cat"></span>';
+        v2StatsEl.innerHTML=v2sh;
+        var v2CatEl=document.getElementById('v2-cat');
+        if(v2CatEl&&data.category){ v2CatEl.textContent=data.category; v2CatEl.style.display='inline-flex'; }
+      }
+      var v2dlHtml='';
+      if(m.mp4) v2dlHtml+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
+      if(m.mp3) v2dlHtml+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
+      if(!v2dlHtml) v2dlHtml='<span class="dl-none">No download links.</span>';
+      document.getElementById('v2-dl').innerHTML=v2dlHtml;
       sv('v2card',true,'block');
     }
 
