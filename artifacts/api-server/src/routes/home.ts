@@ -10,6 +10,7 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     tag: "current",
     notes: [
       "v2: response now includes <code>title</code> — the video title is returned alongside the MP4 &amp; MP3 download links",
+      "v3: now rejects YouTube URLs with a 400 error — only titles and keywords are accepted; use v1 or v2 for URL-based lookups",
     ],
   },
   {
@@ -180,7 +181,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What is the difference between v1, v2, and v3?",
-    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — returns the video title plus direct MP4 &amp; MP3 download links with minimal overhead. <strong>v3</strong> returns a ranked list of up to 10 YouTube search results with full metadata but without download links.",
+    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — returns the video title plus direct MP4 &amp; MP3 download links with minimal overhead. <strong>v3</strong> is a search-only endpoint — pass a title or keyword and get a ranked list of up to 10 YouTube results with full metadata; YouTube URLs are not accepted by v3.",
   },
   {
     q: "How long are responses cached?",
@@ -188,7 +189,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Can I search by title instead of a URL?",
-    a: "Yes. All endpoints accept both a full YouTube URL (e.g. <code>https://youtu.be/dQw4w9WgXcQ</code>) and a plain-text search query (e.g. <code>never gonna give you up</code>). For v1 and v2, the top search result is used. For v3, up to 10 results are returned.",
+    a: "Yes — v1 and v2 accept both a full YouTube URL (e.g. <code>https://youtu.be/dQw4w9WgXcQ</code>) and a plain-text search query (e.g. <code>never gonna give you up</code>); the top result is used. v3 <strong>only accepts titles or keywords</strong> — passing a URL to v3 returns a 400 error. Use v1 or v2 for URL-based lookups.",
   },
   {
     q: "What formats are available?",

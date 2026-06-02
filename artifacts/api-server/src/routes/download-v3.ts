@@ -116,6 +116,20 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   const input = validation.value;
 
+  // v3 is a search endpoint — URLs are not accepted.
+  if (/^https?:\/\//i.test(input)) {
+    res.status(400).json({
+      credit: "MJL",
+      version: VERSION,
+      ApiCount,
+      ms: Date.now() - t0,
+      error: "v3 only accepts search titles or keywords, not YouTube URLs. Use /api/v1/q or /api/v2/q for URL-based lookups.",
+      usage: "/api/v3/q?=(search title or keyword)",
+      examples: ["/api/v3/q?=top hits 2025", "/api/v3/q?=relaxing music"],
+    });
+    return;
+  }
+
   const hit = cache.getWithMeta(input);
   if (hit) {
     res.setHeader("Cache-Control", "private, no-store");
