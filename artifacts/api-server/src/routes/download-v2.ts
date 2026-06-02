@@ -14,6 +14,7 @@ const router: IRouter = Router();
 interface V2Payload {
   credit: "MJL";
   version: string;
+  title: string | null;
   media: {
     mp4: string | null;
     mp3: string | null;
@@ -31,6 +32,9 @@ const cache = new TtlCache<V2Payload>(300_000, 1_200_000, 500);
 // BoundedMap (LRU, max 1000) — prevents heap exhaustion from unique-query flooding.
 const queryToId = new BoundedMap<string, string>(1_000);
 
+// Stores resolved title per videoId — avoids redundant yts lookups on cache miss.
+const videoIdToTitle = new BoundedMap<string, string>(1_000);
+
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
 
@@ -43,7 +47,7 @@ function isUrl(input: string): boolean {
   return /^https?:\/\//i.test(input);
 }
 
-async function fetchPayload(videoId: string, youtubeUrl: string): Promise<V2Payload> {
+async function fetchPayload(videoId: string, youtubeUrl: string, title: string | null): Promise<V2Payload> {
   const links = await dedup(
     `dl:${videoId}`,
     () => fetchDownloadLinks(youtubeUrl),
@@ -51,6 +55,7 @@ async function fetchPayload(videoId: string, youtubeUrl: string): Promise<V2Payl
   return {
     credit: "MJL",
     version: VERSION,
+    title,
     media: {
       mp4: links?.mp4 ?? null,
       mp3: links?.mp3 ?? null,
@@ -84,6 +89,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   try {
     let videoId: string | null = null;
     let youtubeUrl: string;
+    let title: string | null = null;
 
     if (isUrl(input)) {
       videoId = extractVideoId(input);
@@ -98,11 +104,22 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
         return;
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      // Resolve title for URL-based requests via a cached yts lookup.
+      title = videoIdToTitle.get(videoId) ?? null;
+      if (!title) {
+        const info = await dedup(
+          `yts-id:${videoId}`,
+          () => withTimeout(yts({ videoId }), 15_000, "yt-search"),
+        );
+        title = info.videos[0]?.title ?? null;
+        if (title) videoIdToTitle.set(videoId, title);
+      }
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        title = videoIdToTitle.get(videoId) ?? null;
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -120,8 +137,10 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
           return;
         }
         videoId = first.videoId;
+        title = first.title ?? null;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         queryToId.set(input, videoId);
+        if (title) videoIdToTitle.set(videoId, title);
       }
     }
 
@@ -131,7 +150,8 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       res.json({ ...hit.value, ApiCount, ms: Date.now() - t0 } satisfies V2Response);
       if (hit.stale) {
         setImmediate(() => {
-          dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl))
+          const cachedTitle = hit.value.title;
+          dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, cachedTitle))
             .then(payload => cache.set(videoId!, payload))
             .catch(() => {});
         });
@@ -139,7 +159,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       return;
     }
 
-    const payload = await dedup(`fetch-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl));
+    const payload = await dedup(`fetch-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, title));
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "private, no-store");
     res.json({ ...payload, ApiCount, ms: Date.now() - t0 } satisfies V2Response);

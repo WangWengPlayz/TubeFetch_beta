@@ -5,9 +5,17 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.2.3",
+    date: "2026-06-02",
+    tag: "current",
+    notes: [
+      "v2: response now includes <code>title</code> — the video title is returned alongside the MP4 &amp; MP3 download links",
+    ],
+  },
+  {
     version: "1.2.2",
     date: "2026-05-23",
-    tag: "current",
+    tag: "",
     notes: [
       "Security: global rate limiting (300 req / 15 min) and per-endpoint download rate limiting (60 req / min) via express-rate-limit — protects upstream APIs from abuse",
       "Security: HTTP security headers hardened with Helmet — HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options enforced on all responses",
@@ -172,7 +180,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What is the difference between v1, v2, and v3?",
-    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — skips all metadata and returns only download links. <strong>v3</strong> returns a ranked list of up to 10 YouTube search results with full metadata but without download links.",
+    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — returns the video title plus direct MP4 &amp; MP3 download links with minimal overhead. <strong>v3</strong> returns a ranked list of up to 10 YouTube search results with full metadata but without download links.",
   },
   {
     q: "How long are responses cached?",
