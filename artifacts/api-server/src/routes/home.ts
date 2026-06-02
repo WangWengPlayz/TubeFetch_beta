@@ -211,11 +211,11 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What is the difference between v1, v2, and v3?",
-    a: "<strong>v1</strong> returns full metadata (title, author, thumbnail, duration, views, description, category) plus MP4 &amp; MP3 download links. <strong>v2</strong> is the fastest — returns the video title plus direct MP4 &amp; MP3 download links with minimal overhead. <strong>v3</strong> is a search-only endpoint — pass a title or keyword and get a ranked list of up to 10 YouTube results with full metadata; YouTube URLs are not accepted by v3.",
+    a: "<strong>v1</strong> returns the richest response — full metadata (title, author, thumbnail, duration, views, likes, description, keywords, category, short_url) plus MP4 HD &amp; MP3 download links. <strong>v2</strong> is the fastest and lightest — returns just the video <code>title</code> and direct MP4 &amp; MP3 download links with minimal overhead; ideal for bots and scripts that only need the links. <strong>v3</strong> is search-only — pass a keyword or title and get a ranked list of up to 10 YouTube results (url, short_url, title, channel, duration, views, keywords, category); YouTube URLs are rejected by v3.",
   },
   {
     q: "How long are responses cached?",
-    a: "All successful responses are cached <strong>in-memory for 90 seconds</strong>. If the same query is made within that window, the cached result is returned instantly and the response will include <code>\"cached\": true</code>. The <code>ApiCount</code> counter increments on every request regardless of cache status.",
+    a: "All successful responses are cached <strong>in-memory for 5 minutes</strong> (fresh), then served stale for up to <strong>20 minutes</strong> while a background refresh runs (stale-while-revalidate). When a cached result is returned the response will include <code>\"cached\": true</code>. The <code>ApiCount</code> counter increments on every request regardless of cache status.",
   },
   {
     q: "Can I search by title instead of a URL?",
@@ -227,7 +227,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What is ApiCount?",
-    a: "<code>ApiCount</code> is a global request counter that increments by 1 on every API call to TubeFetch (v1, v2, v3, uptime, and healthz). It reflects the <strong>total number of requests served</strong> since the server last started. View the live count at <code>/api/stats</code> or in the stats bar above.",
+    a: "<code>ApiCount</code> is a global request counter that increments by 1 on every download or search call to TubeFetch (<code>/api/v1/q</code>, <code>/api/v2/q</code>, <code>/api/v3/q</code>). Health checks (<code>/api/healthz</code>) and uptime pings (<code>/api/uptime</code>) do <strong>not</strong> increment it. View the live count at <code>/api/stats</code> or in the stats bar above.",
   },
   {
     q: "What categories does TubeFetch detect?",
@@ -235,7 +235,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Is there a rate limit?",
-    a: "There is <strong>no enforced rate limit</strong>. However, please be respectful of the underlying services TubeFetch depends on. Excessive polling or abusive usage may result in temporary throttling from YouTube's infrastructure.",
+    a: "Yes. A <strong>global rate limit of 300 requests per 15 minutes</strong> applies across all endpoints. Download endpoints (<code>/api/v1/q</code>, <code>/api/v2/q</code>, <code>/api/v3/q</code>) have an additional stricter limit of <strong>60 requests per minute</strong> to protect upstream services. Exceeding either limit returns a <code>429 Too Many Requests</code> response.",
   },
   {
     q: "Is TubeFetch free for commercial use?",
@@ -1038,7 +1038,15 @@ function buildHtml(version: string, baseUrl: string): string {
     .r-more:hover { color: #FF4444; }
     .r-dl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 
-    /* ── V2 RESULT (reuses r-card/r-* classes) ── */
+    /* ── V2 RESULT ── */
+    .v2-card {
+      background: rgba(255,255,255,.022); border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius); padding: 20px 22px; margin-bottom: 14px;
+      animation: slide-up .32s var(--ease-spring) both;
+    }
+    .v2-title { font-size: .88rem; font-weight: 700; color: var(--text); line-height: 1.35; margin-bottom: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .v2-label { font-size: .6rem; font-weight: 800; color: var(--text4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .v2-dl { display: flex; gap: 8px; flex-wrap: wrap; }
 
     /* ── V3 RESULT LIST ── */
     .v3-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; animation: slide-up .32s var(--ease-spring) both; }
@@ -1485,7 +1493,7 @@ function buildHtml(version: string, baseUrl: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Pass any YouTube <code>URL</code> or plain search title. Returns full metadata — title, author, thumbnail, duration, views, description, <strong>category</strong> — plus direct <code>MP4</code> &amp; <code>MP3</code> download links. Results cached <strong>5 minutes</strong>. Every response includes <code>ApiCount</code>.</p>
+          <p class="ep-info">Pass any YouTube <code>URL</code> or plain search title. Returns full metadata — <code>title</code>, <code>author</code>, <code>thumbnail</code>, <code>duration</code>, <code>views</code>, <code>likes</code>, <code>description</code>, <code>keywords</code>, <code>category</code>, <code>short_url</code> — plus direct <code>MP4 HD</code> &amp; <code>MP3</code> download links. Response includes <code>video_id</code>, <code>url</code>, <code>short_url</code>, <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q0" type="text" placeholder="e.g. bohemian rhapsody  or  https://youtu.be/…" onkeydown="if(event.key==='Enter')fetchEp(0)" autocomplete="off"/>
             <button class="ep-fetch-btn ripple-container" id="btn0" onclick="addRipple(event);fetchEp(0)">
@@ -1562,12 +1570,12 @@ function buildHtml(version: string, baseUrl: string): string {
       <div class="ep-header" onclick="toggleEp(3)">
         <span class="ep-method v2">GET</span>
         <span class="ep-path">/api/v2/q?=(url or title)</span>
-        <span class="ep-desc-label">Fast — metadata + links <span class="ep-badge-fast">⚡ v2</span></span>
+        <span class="ep-desc-label">Fast — title + links <span class="ep-badge-fast">⚡ v2</span></span>
         <span class="ep-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Fast full-metadata endpoint — returns <code>title</code>, <code>channel</code>, <code>thumbnail</code>, <code>duration</code>, <code>views</code>, <code>published</code>, <code>category</code>, <code>short_url</code>, and direct <code>MP4</code> &amp; <code>MP3</code> download links. URL requests fetch metadata and links in parallel for maximum speed. Response includes <code>video_id</code>, <code>video_url</code>, <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>.</p>
+          <p class="ep-info">The fastest download endpoint — returns the video <code>title</code> and direct <code>MP4</code> &amp; <code>MP3</code> download links with minimal overhead. For URL inputs, title and links are fetched in parallel. Response: <code>credit</code>, <code>version</code>, <code>title</code>, <code>media.mp4</code>, <code>media.mp3</code>, <code>ApiCount</code>, <code>cached</code>, <code>ms</code>.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q3" type="text" placeholder="e.g. never gonna give you up  or  https://youtu.be/…" onkeydown="if(event.key==='Enter')fetchEp(3)" autocomplete="off"/>
             <button class="ep-fetch-btn ripple-container" id="btn3" onclick="addRipple(event);fetchEp(3)">
@@ -1591,19 +1599,10 @@ function buildHtml(version: string, baseUrl: string): string {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL
               </button>
             </div>
-            <div class="r-card" id="v2card" style="display:none">
-              <div class="r-inner">
-                <div class="r-thumb">
-                  <img id="v2-thumb" src="" alt="" class="r-thumb-img" style="opacity:.3"/>
-                  <span class="r-dur" id="v2-dur" style="display:none"></span>
-                </div>
-                <div class="r-body">
-                  <div class="r-title" id="v2-title-el"></div>
-                  <a class="r-author" id="v2-author" href="#" target="_blank" rel="noopener noreferrer" style="display:none"></a>
-                  <div class="r-stats" id="v2-stats"></div>
-                  <div class="r-dl" id="v2-dl"></div>
-                </div>
-              </div>
+            <div class="v2-card" id="v2card" style="display:none">
+              <div class="v2-title" id="v2-title-el" style="display:none"></div>
+              <div class="v2-label">Download Links</div>
+              <div class="v2-dl" id="v2-dl"></div>
             </div>
             <div class="json-actions">
               <span class="json-label">Raw Response</span>
@@ -1625,7 +1624,7 @@ function buildHtml(version: string, baseUrl: string): string {
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Returns up to <strong>10 ranked YouTube search results</strong> — each with url, title, description, channel name &amp; url, published date, duration, thumbnail, views, and <strong>category</strong>. Includes <code>credit</code>, <code>version</code>, <code>ApiCount</code>, and <code>ms</code>. No download links — use v1/v2 for those.</p>
+          <p class="ep-info">Returns up to <strong>10 ranked YouTube search results</strong> — each with <code>rank</code>, <code>video_id</code>, <code>url</code>, <code>short_url</code>, <code>title</code>, <code>description</code>, <code>channel_name</code>, <code>channel_url</code>, <code>published</code>, <code>duration</code>, <code>thumbnail</code>, <code>views</code>, <code>keywords</code>, and <code>category</code>. Response includes <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>. YouTube URLs are rejected — use v1 or v2 for those.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q4" type="text" placeholder="e.g. top hits 2025  or  relaxing lofi music" onkeydown="if(event.key==='Enter')fetchEp(4)" autocomplete="off"/>
             <button class="ep-fetch-btn ripple-container" id="btn4" onclick="addRipple(event);fetchEp(4)">
@@ -2286,33 +2285,16 @@ async function fetchEp(n){
       sv('rcard0',true,'block');
     }
 
-    /* ── V2 rich card ── */
+    /* ── V2 quick card ── */
     if(n===3&&typeof data==='object'&&data&&data.media){
       var m=data.media;
-      var v2ThumbEl=document.getElementById('v2-thumb');
-      if(v2ThumbEl){ v2ThumbEl.src=data.thumbnail?esc(data.thumbnail):''; v2ThumbEl.alt=esc(data.title||''); v2ThumbEl.style.opacity=data.thumbnail?'1':'.3'; }
-      var v2DurEl=document.getElementById('v2-dur');
-      if(v2DurEl){ v2DurEl.textContent=data.duration||''; v2DurEl.style.display=data.duration?'inline-block':'none'; }
-      var v2TitleEl=document.getElementById('v2-title-el');
-      if(v2TitleEl) v2TitleEl.textContent=data.title||'';
-      var v2AuthEl=document.getElementById('v2-author');
-      if(v2AuthEl){ if(data.channel_name){ v2AuthEl.textContent=data.channel_name; v2AuthEl.href=esc(data.channel_url||'#'); v2AuthEl.style.display='block'; } else { v2AuthEl.style.display='none'; } }
-      var v2StatsEl=document.getElementById('v2-stats');
-      if(v2StatsEl){
-        var v2sh='';
-        if(data.views) v2sh+='<span class="r-stat">'+fmtViews(data.views)+'</span>';
-        if(data.published) v2sh+='<span class="r-stat">'+esc(data.published)+'</span>';
-        if(data.duration_seconds&&!data.views&&!data.published) v2sh+='<span class="r-stat">'+esc(data.duration)+'</span>';
-        v2sh+='<span class="cat-badge" id="v2-cat"></span>';
-        v2StatsEl.innerHTML=v2sh;
-        var v2CatEl=document.getElementById('v2-cat');
-        if(v2CatEl&&data.category){ v2CatEl.textContent=data.category; v2CatEl.style.display='inline-flex'; }
-      }
-      var v2dlHtml='';
-      if(m.mp4) v2dlHtml+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
-      if(m.mp3) v2dlHtml+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
-      if(!v2dlHtml) v2dlHtml='<span class="dl-none">No download links.</span>';
-      document.getElementById('v2-dl').innerHTML=v2dlHtml;
+      var titleEl=document.getElementById('v2-title-el');
+      if(titleEl){ if(data.title){ titleEl.textContent=data.title; titleEl.style.display='block'; } else { titleEl.style.display='none'; } }
+      var v2html='';
+      if(m.mp4) v2html+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
+      if(m.mp3) v2html+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
+      if(!v2html) v2html='<span class="dl-none">No download links.</span>';
+      document.getElementById('v2-dl').innerHTML=v2html;
       sv('v2card',true,'block');
     }
 

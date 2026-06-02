@@ -4,43 +4,17 @@ import { TtlCache } from "../lib/cache";
 import { BoundedMap } from "../lib/bounded-map";
 import { VERSION } from "../lib/version";
 import { increment, recordSuccess, recordError } from "../lib/counter";
-import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-import { fetchDownloadLinks, type DownloadLinks } from "../lib/downloader";
+import { fetchDownloadLinks } from "../lib/downloader";
 
 const router: IRouter = Router();
-
-// Metadata resolved from either a keyword search result or a yts({ videoId }) lookup.
-interface VideoMeta {
-  title: string | null;
-  channelName: string | null;
-  channelUrl: string | null;
-  thumbnail: string | null;
-  duration: string | null;
-  durationSeconds: number | null;
-  views: number | null;
-  published: string | null;
-  keywords: string[];
-  description: string;
-}
 
 interface V2Payload {
   credit: "MJL";
   version: string;
-  video_id: string;
-  video_url: string;
-  short_url: string;
   title: string | null;
-  channel_name: string | null;
-  channel_url: string | null;
-  thumbnail: string | null;
-  duration: string | null;
-  duration_seconds: number | null;
-  views: number | null;
-  published: string | null;
-  category: string | null;
   media: {
     mp4: string | null;
     mp3: string | null;
@@ -56,8 +30,11 @@ interface V2Response extends V2Payload {
 // Fresh 5 min, stale-served up to 20 min (SWR), max 500 entries.
 const cache = new TtlCache<V2Payload>(300_000, 1_200_000, 500);
 
-// Keyword → videoId lookup (LRU, max 1000) — avoids re-running keyword searches.
+// Keyword → videoId (LRU, max 1000) — avoids re-running keyword searches.
 const queryToId = new BoundedMap<string, string>(1_000);
+
+// videoId → title (LRU, max 1000) — caches resolved titles for URL inputs.
+const videoIdToTitle = new BoundedMap<string, string>(1_000);
 
 const YT_URL_RE =
   /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -71,95 +48,49 @@ function isUrl(input: string): boolean {
   return /^https?:\/\//i.test(input);
 }
 
-function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
-  name: string | null;
-  url: string | null;
-} {
-  if (!author) return { name: null, url: null };
-  if (typeof author === "string") return { name: author, url: null };
-  return { name: author.name ?? null, url: author.url ?? null };
-}
-
 /**
- * Assemble the full v2 payload.
+ * Fetch title + download links for a video.
  *
- * @param preMeta - Pre-loaded metadata from a keyword search result.
- *   When provided, only the download fetch runs.
- *   When null (URL input), yts({ videoId }) and download run in parallel.
+ * knownTitle = string → keyword path: title already resolved, only fetches download links.
+ * knownTitle = null   → URL path: runs yts({ videoId }) and fetchDownloadLinks in parallel,
+ *                        cutting response time roughly in half vs sequential.
  */
 async function fetchPayload(
   videoId: string,
   youtubeUrl: string,
-  preMeta: VideoMeta | null,
+  knownTitle: string | null,
 ): Promise<V2Payload> {
-  let meta = preMeta;
-  let links: DownloadLinks | null = null;
+  let title = knownTitle;
+  let mp4: string | null = null;
+  let mp3: string | null = null;
 
-  if (meta) {
-    // Keyword path — metadata already in hand; only fetch download links.
-    links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
+  if (title !== null) {
+    // Keyword path — title already known, only fetch download links.
+    const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
+    mp4 = links?.mp4 ?? null;
+    mp3 = links?.mp3 ?? null;
   } else {
-    // URL path — run metadata lookup and download fetch in parallel.
+    // URL path — fetch title and download links in parallel.
     const [infoResult, dlResult] = await Promise.allSettled([
       dedup(`yts-id:${videoId}`, () =>
         withTimeout(yts({ videoId }), 15_000, "yt-search"),
       ),
       dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
     ]);
-    links = dlResult.status === "fulfilled" ? dlResult.value : null;
     if (infoResult.status === "fulfilled") {
-      const raw = infoResult.value as unknown as {
-        title?: string;
-        author?: yts.VideoAuthor | string;
-        thumbnail?: string;
-        image?: string;
-        duration?: { timestamp?: string; seconds?: number };
-        views?: number;
-        ago?: string;
-        keywords?: string[];
-        description?: string;
-      };
-      const { name: channelName, url: channelUrl } = resolveAuthor(raw.author);
-      meta = {
-        title: raw.title ?? null,
-        channelName,
-        channelUrl,
-        thumbnail: raw.thumbnail ?? raw.image ?? null,
-        duration: raw.duration?.timestamp ?? null,
-        durationSeconds: raw.duration?.seconds ?? null,
-        views: raw.views ?? null,
-        published: raw.ago ?? null,
-        keywords: raw.keywords ?? [],
-        description: raw.description ?? "",
-      };
+      title = (infoResult.value as unknown as { title?: string }).title ?? null;
+      if (title) videoIdToTitle.set(videoId, title);
     }
+    const links = dlResult.status === "fulfilled" ? dlResult.value : null;
+    mp4 = links?.mp4 ?? null;
+    mp3 = links?.mp3 ?? null;
   }
-
-  const thumbnail =
-    meta?.thumbnail ?? links?.thumbnail ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-  const category = meta
-    ? inferCategory(meta.keywords, meta.title ?? "", meta.description)
-    : null;
 
   return {
     credit: "MJL",
     version: VERSION,
-    video_id: videoId,
-    video_url: youtubeUrl,
-    short_url: `https://youtu.be/${videoId}`,
-    title: meta?.title ?? null,
-    channel_name: meta?.channelName ?? null,
-    channel_url: meta?.channelUrl ?? null,
-    thumbnail,
-    duration: meta?.duration ?? null,
-    duration_seconds: meta?.durationSeconds ?? null,
-    views: meta?.views ?? null,
-    published: meta?.published ?? null,
-    category,
-    media: {
-      mp4: links?.mp4 ?? null,
-      mp3: links?.mp3 ?? null,
-    },
+    title,
+    media: { mp4, mp3 },
   };
 }
 
@@ -189,7 +120,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   try {
     let videoId: string | null = null;
     let youtubeUrl: string;
-    let preMeta: VideoMeta | null = null;
+    let knownTitle: string | null = null;
 
     if (isUrl(input)) {
       videoId = extractVideoId(input);
@@ -204,13 +135,14 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
         return;
       }
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      // preMeta stays null — fetchPayload will run yts + download in parallel.
+      // Use cached title if available; otherwise fetchPayload resolves it in parallel with dl.
+      knownTitle = videoIdToTitle.get(videoId) ?? null;
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        // preMeta stays null — metadata served from payload cache or parallel fetch.
+        knownTitle = videoIdToTitle.get(videoId) ?? null;
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -229,20 +161,9 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
         }
         videoId = first.videoId;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        knownTitle = first.title ?? null;
         queryToId.set(input, videoId);
-        const { name: channelName, url: channelUrl } = resolveAuthor(first.author);
-        preMeta = {
-          title: first.title ?? null,
-          channelName,
-          channelUrl,
-          thumbnail: first.thumbnail ?? first.image ?? null,
-          duration: first.duration?.timestamp ?? null,
-          durationSeconds: first.duration?.seconds ?? null,
-          views: first.views ?? null,
-          published: first.ago ?? null,
-          keywords: first.keywords ?? [],
-          description: first.description ?? "",
-        };
+        if (knownTitle) videoIdToTitle.set(videoId, knownTitle);
       }
     }
 
@@ -252,7 +173,6 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies V2Response);
       if (hit.stale) {
         setImmediate(() => {
-          // SWR background refresh always re-fetches both yts + download in parallel.
           dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null))
             .then(payload => cache.set(videoId!, payload))
             .catch(() => {});
@@ -263,7 +183,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
     const payload = await dedup(
       `fetch-v2:${videoId}`,
-      () => fetchPayload(videoId!, youtubeUrl, preMeta),
+      () => fetchPayload(videoId!, youtubeUrl, knownTitle),
     );
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "private, no-store");
