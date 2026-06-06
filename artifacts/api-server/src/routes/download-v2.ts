@@ -51,46 +51,42 @@ function isUrl(input: string): boolean {
 /**
  * Fetch title + download links for a video.
  *
- * knownTitle = string → keyword path: title already resolved, only fetches download links.
- * knownTitle = null   → URL path: runs yts({ videoId }) and fetchDownloadLinks in parallel,
- *                        cutting response time roughly in half vs sequential.
+ * knownTitle = string → keyword path: title already known; only fetches download links.
+ * knownTitle = null   → URL path: fetches download links first (ytdl.getInfo already
+ *                        returns the title as a free bonus). If the nayan fallback was
+ *                        used instead (ytdl failed), links.title is null and we fall
+ *                        back to a yts({ videoId }) call to recover the title.
  */
 async function fetchPayload(
   videoId: string,
   youtubeUrl: string,
   knownTitle: string | null,
 ): Promise<V2Payload> {
-  let title = knownTitle;
-  let mp4: string | null = null;
-  let mp3: string | null = null;
+  const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
 
-  if (title !== null) {
-    // Keyword path — title already known, only fetch download links.
-    const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
-    mp4 = links?.mp4 ?? null;
-    mp3 = links?.mp3 ?? null;
-  } else {
-    // URL path — fetch title and download links in parallel.
-    const [infoResult, dlResult] = await Promise.allSettled([
-      dedup(`yts-id:${videoId}`, () =>
-        withTimeout(yts({ videoId }), 15_000, "yt-search"),
-      ),
-      dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
-    ]);
-    if (infoResult.status === "fulfilled") {
-      title = (infoResult.value as unknown as { title?: string }).title ?? null;
+  let title = knownTitle ?? links?.title ?? null;
+
+  // URL path fallback: ytdl failed (nayan was used) so links.title is null.
+  // Try yts({ videoId }) to recover the title. This is rare — ytdl succeeds
+  // in the vast majority of requests.
+  if (!title) {
+    try {
+      const info = await dedup(`yts-id:${videoId}`, () =>
+        withTimeout(yts({ videoId }), 12_000, "yt-search-id"),
+      );
+      title = (info as unknown as { title?: string }).title ?? null;
       if (title) videoIdToTitle.set(videoId, title);
-    }
-    const links = dlResult.status === "fulfilled" ? dlResult.value : null;
-    mp4 = links?.mp4 ?? null;
-    mp3 = links?.mp3 ?? null;
+    } catch { /* best-effort */ }
   }
 
   return {
     credit: "MJL",
     version: VERSION,
     title,
-    media: { mp4, mp3 },
+    media: {
+      mp4: links?.mp4 ?? null,
+      mp3: links?.mp3 ?? null,
+    },
   };
 }
 

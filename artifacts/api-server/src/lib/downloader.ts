@@ -8,6 +8,7 @@ export interface DownloadLinks {
   mp4: string | null;
   mp3: string | null;
   thumbnail: string | null;
+  title: string | null;
 }
 
 /**
@@ -63,7 +64,8 @@ export async function fetchDownloadLinks(youtubeUrl: string): Promise<DownloadLi
       const thumbs = info.videoDetails.thumbnails ?? [];
       const thumbnail =
         thumbs.sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null;
-      return { mp4, mp3, thumbnail };
+      const title = (info.videoDetails.title as string | undefined) ?? null;
+      return { mp4, mp3, thumbnail, title };
     }
   } catch { /* fall through to source 2 */ }
 
@@ -82,8 +84,10 @@ export async function fetchDownloadLinks(youtubeUrl: string): Promise<DownloadLi
       mp3: data?.audio ?? data?.low ?? null,
       // nayan returns the thumbnail as "thumb" in practice despite the type
       thumbnail: data?.thumbnail ?? data?.thumb ?? null,
+      // nayan does not return a title
+      title: null,
     };
   } catch {
-    return { mp4: null, mp3: null, thumbnail: null };
+    return { mp4: null, mp3: null, thumbnail: null, title: null };
   }
 }
