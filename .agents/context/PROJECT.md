@@ -4,6 +4,15 @@ visibility: hidden dotfile directory, not exposed to users
 note: The production build (dist/index.mjs) is obfuscated. This file is the authoritative source of truth for any AI or agent working on this project.
 ---
 
+## MAINTENANCE RULE — READ BEFORE DOING ANY WORK
+
+**This file must be kept up to date at all times.**
+
+- After every change to the project — new features, bug fixes, removed code, changed behaviour, updated dependencies, version bumps — you MUST update the relevant sections of this file to reflect the new state.
+- When you update this file (for any reason), you MUST include **[Code 5]** in your reply to the user so they know this context file was refreshed.
+- Never leave this file stale. If you changed something and did not update this file, go back and do it before finishing.
+- If a section is no longer accurate, fix or delete it. Do not leave outdated information.
+
 # TubeFetch — Full Project Context
 
 ## What this project is
@@ -107,15 +116,18 @@ Full metadata + download links endpoint.
 Query param: `?=` (URL or keyword/title, 1–500 chars, no control chars)
 
 Flow:
-1. Validate query via `validateQuery()`
-2. If URL: extract video ID with regex `/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/`
-3. If keyword: check `queryToId` BoundedMap (LRU 1000); if miss, run `yts(input)` search, take first result
-4. Check `TtlCache` (5 min fresh / 20 min stale, max 500 entries)
+1. Validate query via `validateQuery()` — if invalid, return 400 with NO ApiCount increment
+2. If input is a URL but NOT a YouTube URL → return 400 with NO ApiCount increment, NO errorCount increment
+   - Error: `"URL not supported. Only YouTube URLs are accepted."`
+   - Includes `supported[]` array of valid URL formats and a `tip` to search by title instead
+3. **Only after passing both checks**: call `increment()` and attach `res.on("finish", ...)` for success/error tracking
+4. If URL: extract video ID with regex `/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/`
+5. If keyword: check `queryToId` BoundedMap (LRU 1000); if miss, run `yts(input)` search, take first result
+6. Check `TtlCache` (5 min fresh / 20 min stale, max 500 entries)
    - Cache hit: return immediately; if stale, trigger background SWR refresh via `setImmediate`
-5. Cache miss: call `fetchPayload(videoId, url, preInfo?)`
+7. Cache miss: call `fetchPayload(videoId, url, preInfo?)`
    - URL path: `yts({ videoId })` + `fetchDownloadLinks(url)` run in **parallel** via `Promise.allSettled`
    - Keyword path: preInfo already in hand → only `fetchDownloadLinks` runs
-6. Increment ApiCount; record success/error on response finish
 
 Response shape:
 ```json

@@ -94,18 +94,13 @@ async function fetchPayload(
 
 router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
-  const ApiCount = increment();
-  res.on("finish", () => {
-    if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
-    else recordError();
-  });
 
+  // ── Input validation (before ApiCount — bad input is not a real request) ──
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
     res.status(400).json({
       credit: "MJL",
       version: VERSION,
-      ApiCount,
       ms: Date.now() - t0,
       error: validation.reason,
       usage: "/api/v2/q?=(YouTube URL or title)",
@@ -115,6 +110,30 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   const input = validation.value;
 
+  // ── Reject non-YouTube URLs before ApiCount (not counted, not an error) ──
+  if (isUrl(input) && !extractVideoId(input)) {
+    res.status(400).json({
+      credit: "MJL",
+      version: VERSION,
+      ms: Date.now() - t0,
+      error: "URL not supported. Only YouTube URLs are accepted.",
+      supported: [
+        "https://youtu.be/VIDEO_ID",
+        "https://www.youtube.com/watch?v=VIDEO_ID",
+        "https://www.youtube.com/shorts/VIDEO_ID",
+      ],
+      tip: "You can also search by title — e.g. /api/v2/q?=bohemian rhapsody",
+    });
+    return;
+  }
+
+  // ── Count only real, processable requests ─────────────────────────────────
+  const ApiCount = increment();
+  res.on("finish", () => {
+    if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
+    else recordError();
+  });
+
   try {
     let videoId: string | null = null;
     let youtubeUrl: string;
@@ -122,17 +141,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
     if (isUrl(input)) {
       videoId = extractVideoId(input);
-      if (!videoId) {
-        res.status(400).json({
-          credit: "MJL",
-          version: VERSION,
-          ApiCount,
-          ms: Date.now() - t0,
-          error: "Could not extract a YouTube video ID from this URL.",
-        });
-        return;
-      }
-      youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      youtubeUrl = `https://www.youtube.com/watch?v=${videoId!}`;
       // Use cached title if available; otherwise fetchPayload resolves it in parallel with dl.
       knownTitle = videoIdToTitle.get(videoId) ?? null;
     } else {
