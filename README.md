@@ -1,10 +1,19 @@
 # TubeFetch — YouTube Downloader REST API
 
-> **Version 1.2.6** · Node.js 24 · Express 5 · TypeScript 5.9 · pnpm monorepo
+> **Version 1.2.7** · Node.js 24 · Express 5 · TypeScript 5.9 · pnpm monorepo
 
 A free, open REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, full video metadata, and top search results — **no API key required**.
 
 > ⚠️ See [DISCLAIMER.md](./DISCLAIMER.md) for copyright, legal terms, and usage restrictions before deploying or using this project.
+
+---
+
+## What's New in 1.2.7 — Big Update
+
+- **Server 1 (btch-downloader)** is now the primary download source for all MP4 & MP3 links
+- **Server 2 (nayan-media-downloaders)** is the automatic fallback — kicks in silently when Server 1 fails
+- `media.server: 1 | 2` added to v1 and v2 responses — tells you which server delivered the links
+- `@distube/ytdl-core` removed from the active download chain
 
 ---
 
@@ -41,8 +50,9 @@ curl "https://your-domain.com/api/stats"
 
 ```json
 {
-  "credit": "MJL",
-  "version": "1.2.6",
+  "version": "1.2.7",
+  "success": true,
+  "creditTo": "MJL",
   "video_id": "dQw4w9WgXcQ",
   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
   "short_url": "https://youtu.be/dQw4w9WgXcQ",
@@ -53,14 +63,14 @@ curl "https://your-domain.com/api/stats"
     "thumbnail": "https://...",
     "duration": "3:33",
     "views": 1400000000,
-    "likes": 16000000,
     "published": "25 years ago",
     "description": "...",
     "keywords": ["rick astley", "never gonna give you up"]
   },
   "media": {
-    "mp4": "https://...",
-    "mp3": "https://..."
+    "mp4": { "url": "https://...", "quality": "HD" },
+    "mp3": { "url": "https://..." },
+    "server": 1
   },
   "ApiCount": 1234,
   "cached": false,
@@ -73,17 +83,47 @@ curl "https://your-domain.com/api/stats"
 ```json
 {
   "credit": "MJL",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "title": "Rick Astley - Never Gonna Give You Up",
   "media": {
     "mp4": "https://...",
-    "mp3": "https://..."
+    "mp3": "https://...",
+    "server": 1
   },
   "ApiCount": 1235,
   "cached": false,
   "ms": 1203
 }
 ```
+
+### `media.server` Field
+
+| Value | Meaning |
+|---|---|
+| `1` | Links delivered by **btch-downloader** (Server 1, primary) |
+| `2` | Links delivered by **nayan-media-downloaders** (Server 2, fallback) |
+| `null` | Both servers failed — mp4/mp3 will also be null |
+
+---
+
+## Download Server Chain
+
+```
+Request
+  │
+  ▼
+Server 1: btch-downloader  ──── success ──▶  Return links (server: 1)
+  │
+  │ (failed / timeout 20s)
+  ▼
+Server 2: nayan-media-downloaders  ── success ──▶  Return links (server: 2)
+  │
+  │ (failed / timeout 20s)
+  ▼
+Return null links (server: 2)
+```
+
+The fallback is fully automatic — users always get the best available result with no extra configuration needed.
 
 ---
 
@@ -134,7 +174,8 @@ Click **Deploy** — Render will install dependencies, run the esbuild bundle, a
 | Language | TypeScript 5.9 (strict) |
 | Package Manager | pnpm workspaces |
 | Search | yt-search |
-| Downloads | @distube/ytdl-core + nayan-media-downloaders (fallback) |
+| Downloads (Server 1) | btch-downloader (primary) |
+| Downloads (Server 2) | nayan-media-downloaders (fallback) |
 | Persistence | MongoDB (optional, Atlas free tier works) |
 | Logging | pino + pino-http |
 | Build | esbuild |
@@ -156,7 +197,7 @@ artifacts/api-server/src/
 ├── lib/
 │   ├── cache.ts         — TtlCache (5 min fresh / 20 min stale SWR)
 │   ├── counter.ts       — Global ApiCount singleton (MongoDB-backed)
-│   ├── downloader.ts    — Two-source download fallback chain
+│   ├── downloader.ts    — Two-server download chain (btch → nayan)
 │   ├── category.ts      — YouTube content category inference
 │   └── version.ts       — VERSION constant
 └── middleware/
@@ -201,6 +242,27 @@ pnpm run typecheck
 
 ---
 
+## Changelog
+
+### v1.2.7 — Big Update (2026-06-08)
+- `btch-downloader` is now **Server 1** (primary download source)
+- `nayan-media-downloaders` is now **Server 2** (fallback)
+- `media.server: 1 | 2` added to v1 and v2 responses
+- `@distube/ytdl-core` removed from active download chain
+
+### v1.2.6 — Hotfix (2026-06-06)
+- Fixed v2 `title` returning `null` on URL inputs
+
+### v1.2.5 (2026-06-02)
+- v2 URL requests now fetch metadata and download links in parallel
+- v1 keyword queries reuse search result metadata (no redundant lookup)
+
+### v1.2.2 (2026-05-23)
+- Global rate limiting + Helmet security headers
+- Two-source download fallback chain introduced
+
+---
+
 ## License & Legal
 
 See **[DISCLAIMER.md](./DISCLAIMER.md)** for the full copyright notice, legal disclaimers, and usage restrictions.
@@ -209,4 +271,4 @@ This project is provided for **educational and personal use only**. Downloading 
 
 ---
 
-*Built by **MJL** · TubeFetch v1.2.6*
+*Built by **MJL** · TubeFetch v1.2.7*

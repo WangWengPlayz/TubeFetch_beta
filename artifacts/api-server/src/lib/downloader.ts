@@ -1,4 +1,3 @@
-import ytdl from "@distube/ytdl-core";
 import { createRequire } from "module";
 import { withTimeout } from "./dedup";
 
@@ -9,71 +8,55 @@ export interface DownloadLinks {
   mp3: string | null;
   thumbnail: string | null;
   title: string | null;
+  server: 1 | 2;
 }
 
 /**
- * Fetch MP4 + audio download links using a two-source fallback chain.
+ * Fetch MP4 + audio download links using a two-server fallback chain.
  *
- * Source 1 — @distube/ytdl-core (primary)
- *   Extracts URLs directly from YouTube's own CDN. No third-party relay.
- *   More private and reliable when it works, but YouTube's bot detection on
- *   cloud server IPs can cause it to fail on some videos.
- *   Timeout: 12 s.
+ * Server 1 — btch-downloader (primary)
+ *   Routes through an external conversion relay. Returns title, thumbnail,
+ *   mp4, and mp3 in a single call. Fast and reliable for most videos.
+ *   Timeout: 20 s.
  *
- * Source 2 — nayan-media-downloaders (fallback)
- *   Routes through ymcdn.org, a third-party conversion service.
- *   Works on virtually all videos but depends on an external service being up.
+ * Server 2 — nayan-media-downloaders (fallback)
+ *   Routes through ymcdn.org. Used automatically when Server 1 fails.
  *   Timeout: 20 s.
  *
  * Result: the API remains functional even when either source is down.
  */
 export async function fetchDownloadLinks(youtubeUrl: string): Promise<DownloadLinks> {
 
-  // ── Source 1: @distube/ytdl-core ─────────────────────────────────────────
+  // ── Server 1: btch-downloader ─────────────────────────────────────────────
   try {
-    const info = await withTimeout(
-      ytdl.getInfo(youtubeUrl),
-      12_000,
-      "ytdl-getInfo",
-    );
+    const { youtube } = _require("btch-downloader") as {
+      youtube: (url: string) => Promise<{
+        status: boolean;
+        title?: string;
+        author?: string;
+        thumbnail?: string;
+        mp3?: string;
+        mp4?: string;
+      }>;
+    };
 
-    let mp4: string | null = null;
-    let mp3: string | null = null;
+    const data = await withTimeout(youtube(youtubeUrl), 20_000, "btch-youtube");
 
-    // Best combined format (video + audio in one file)
-    try {
-      const fmt = ytdl.chooseFormat(info.formats, {
-        quality: "highestvideo",
-        filter: "audioandvideo",
-      });
-      if (fmt?.url) mp4 = fmt.url;
-    } catch { /* format may not exist — handled below */ }
-
-    // Best audio-only format
-    try {
-      const fmt = ytdl.chooseFormat(info.formats, {
-        quality: "highestaudio",
-        filter: "audioonly",
-      });
-      if (fmt?.url) mp3 = fmt.url;
-    } catch { /* format may not exist — handled below */ }
-
-    // Only declare success if both URLs were resolved — partial results
-    // (e.g. mp4 without mp3) fall through to nayan which always provides both.
-    if (mp4 && mp3) {
-      const thumbs = info.videoDetails.thumbnails ?? [];
-      const thumbnail =
-        thumbs.sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.url ?? null;
-      const title = (info.videoDetails.title as string | undefined) ?? null;
-      return { mp4, mp3, thumbnail, title };
+    if (data?.status && (data.mp4 || data.mp3)) {
+      return {
+        mp4: data.mp4 ?? null,
+        mp3: data.mp3 ?? null,
+        thumbnail: data.thumbnail ?? null,
+        title: data.title ?? null,
+        server: 1,
+      };
     }
-  } catch { /* fall through to source 2 */ }
+  } catch { /* fall through to Server 2 */ }
 
-  // ── Source 2: nayan-media-downloaders ────────────────────────────────────
+  // ── Server 2: nayan-media-downloaders ─────────────────────────────────────
   // Wrapped in its own try-catch — the upstream ymcdn.org relay can return
-  // unexpected shapes that cause the library to throw internally (e.g.
-  // "Cannot read properties of undefined (reading '0')"). We recover
-  // gracefully with null links rather than propagating a 500 to the caller.
+  // unexpected shapes that cause the library to throw internally.
+  // We recover gracefully with null links rather than propagating a 500.
   try {
     const { ytdown } = _require("nayan-media-downloaders") as typeof import("nayan-media-downloaders");
     const dl = await withTimeout(ytdown(youtubeUrl), 20_000, "ytdown");
@@ -82,12 +65,11 @@ export async function fetchDownloadLinks(youtubeUrl: string): Promise<DownloadLi
     return {
       mp4: data?.video_hd ?? data?.video ?? data?.high ?? null,
       mp3: data?.audio ?? data?.low ?? null,
-      // nayan returns the thumbnail as "thumb" in practice despite the type
       thumbnail: data?.thumbnail ?? data?.thumb ?? null,
-      // nayan does not return a title
       title: null,
+      server: 2,
     };
   } catch {
-    return { mp4: null, mp3: null, thumbnail: null, title: null };
+    return { mp4: null, mp3: null, thumbnail: null, title: null, server: 2 };
   }
 }

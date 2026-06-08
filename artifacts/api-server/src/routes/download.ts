@@ -24,6 +24,7 @@ interface VideoPayload {
   media: {
     mp4: { url: string; quality: "HD" } | null;
     mp3: { url: string } | null;
+    server: 1 | 2 | null;
   };
 }
 
@@ -152,6 +153,7 @@ async function fetchPayload(
     media: {
       mp4: mp4Url ? { url: mp4Url, quality: "HD" } : null,
       mp3: mp3Url ? { url: mp3Url } : null,
+      server: links?.server ?? null,
     },
   };
 }

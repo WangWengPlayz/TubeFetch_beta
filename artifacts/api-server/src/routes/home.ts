@@ -5,6 +5,19 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.2.7",
+    date: "2026-06-08",
+    tag: "big-update",
+    notes: [
+      "New primary downloader: <strong>btch-downloader</strong> is now <strong>Server 1</strong> — the main source for all MP4 &amp; MP3 download links",
+      "<strong>nayan-media-downloaders</strong> is now <strong>Server 2</strong> — automatic fallback used only when Server 1 fails; functions exactly as before",
+      "v1 &amp; v2 responses now include <code>media.server: 1 | 2</code> — indicates which server delivered the download links for that request",
+      "Fallback is fully automatic and transparent: if btch fails, nayan kicks in and the response reflects <code>server: 2</code> with no extra latency for the retry",
+      "Both servers have a 20-second timeout; null links are returned only if both servers fail",
+      "<code>@distube/ytdl-core</code> removed from the active download chain — replaced entirely by btch-downloader as Server 1",
+    ],
+  },
+  {
     version: "1.2.6",
     date: "2026-06-06",
     tag: "hotfix",
@@ -304,8 +317,10 @@ function buildHtml(version: string, baseUrl: string): string {
     const tagHtml =
       e.tag === "current"
         ? `<span class="cl-tag current">Latest</span>`
+        : e.tag === "big-update"
+        ? `<span class="cl-tag current">Latest</span><span class="cl-tag big-update">Big Update</span>`
         : e.tag === "hotfix"
-        ? `<span class="cl-tag current">Latest</span><span class="cl-tag hotfix">Hotfix</span>`
+        ? `<span class="cl-tag hotfix">Hotfix</span>`
         : e.tag === "initial"
         ? `<span class="cl-tag init">Initial</span>`
         : "";
@@ -814,6 +829,7 @@ function buildHtml(version: string, baseUrl: string): string {
     .cl-tag.current { background: rgba(255,0,0,.1); color: #FF4444; border: 1px solid rgba(255,0,0,.2); }
     .cl-tag.init { background: rgba(255,255,255,.05); color: var(--text3); }
     .cl-tag.hotfix { background: rgba(255,165,0,.12); color: #FFA500; border: 1px solid rgba(255,165,0,.3); }
+    .cl-tag.big-update { background: rgba(139,92,246,.15); color: #a78bfa; border: 1px solid rgba(139,92,246,.35); }
     .cl-date { font-size: .64rem; color: var(--text4); font-family: var(--mono); }
     .cl-notes { list-style: none; display: flex; flex-direction: column; gap: 4px; }
     .cl-notes li { font-size: .7rem; color: var(--text3); padding-left: 14px; position: relative; line-height: 1.5; }

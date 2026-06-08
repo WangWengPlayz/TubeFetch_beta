@@ -2,7 +2,7 @@
 
 REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, metadata, and top search results.
 
-## Current Version: 1.2.5
+## Current Version: 1.2.7
 
 ## Stack
 
@@ -10,7 +10,8 @@ REST API that accepts a YouTube URL **or a plain title/keyword** and returns dir
 - **Node.js**: 24
 - **Framework**: Express 5
 - **Search**: `yt-search` — resolves title queries to YouTube video IDs and metadata
-- **Downloads**: `nayan-media-downloaders` — returns direct MP4 (HD) and MP3 download URLs
+- **Downloads (Server 1)**: `btch-downloader` — primary MP4/MP3 source
+- **Downloads (Server 2)**: `nayan-media-downloaders` — automatic fallback when Server 1 fails
 - **Logging**: pino + pino-http (pretty in dev, JSON in production)
 - **Build**: esbuild (via `build.mjs`)
 - **TypeScript**: 5.9, strict

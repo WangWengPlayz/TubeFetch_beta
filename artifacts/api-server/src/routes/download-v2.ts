@@ -18,6 +18,7 @@ interface V2Payload {
   media: {
     mp4: string | null;
     mp3: string | null;
+    server: 1 | 2 | null;
   };
 }
 
@@ -86,6 +87,7 @@ async function fetchPayload(
     media: {
       mp4: links?.mp4 ?? null,
       mp3: links?.mp3 ?? null,
+      server: links?.server ?? null,
     },
   };
 }
