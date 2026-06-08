@@ -3,11 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, readFile, writeFile } from "node:fs/promises";
 
-// Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
+const _require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildAll() {
@@ -22,11 +22,6 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
-    // Some packages may not be bundleable, so we externalize them, we can add more here as needed.
-    // Some of the packages below may not be imported or installed, but we're adding them in case they are in the future.
-    // Examples of unbundleable packages:
-    // - uses native modules and loads them dynamically (e.g. sharp)
-    // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
       "*.node",
       "btch-downloader",
@@ -104,12 +99,10 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // No sourcemaps — they would expose the original source code
     plugins: [
-      // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
     ],
-    // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';
 import __bannerPath from 'node:path';
@@ -121,6 +114,50 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // ── Obfuscate main bundle ─────────────────────────────────────────────────
+  // Only the application entry point is obfuscated.
+  // Pino worker files are left as-is — they are internal pino runtime files
+  // loaded as worker threads; obfuscating them breaks the logging pipeline.
+  const { obfuscate } = _require("javascript-obfuscator");
+  const mainBundle = path.join(distDir, "index.mjs");
+  const source = await readFile(mainBundle, "utf8");
+
+  const result = obfuscate(source, {
+    target: "node",
+    compact: true,
+    controlFlowFlattening: true,
+    controlFlowFlatteningThreshold: 0.75,
+    deadCodeInjection: true,
+    deadCodeInjectionThreshold: 0.4,
+    debugProtection: false,
+    disableConsoleOutput: false,
+    identifierNamesGenerator: "hexadecimal",
+    log: false,
+    numbersToExpressions: true,
+    renameGlobals: false,
+    selfDefending: false,
+    simplify: true,
+    splitStrings: true,
+    splitStringsChunkLength: 10,
+    stringArray: true,
+    stringArrayCallsTransform: true,
+    stringArrayCallsTransformThreshold: 0.75,
+    stringArrayEncoding: ["rc4"],
+    stringArrayIndexShift: true,
+    stringArrayRotate: true,
+    stringArrayShuffle: true,
+    stringArrayWrappersCount: 2,
+    stringArrayWrappersChainedCalls: true,
+    stringArrayWrappersParametersMaxCount: 4,
+    stringArrayWrappersType: "function",
+    stringArrayThreshold: 0.75,
+    transformObjectKeys: true,
+    unicodeEscapeSequence: false,
+  });
+
+  await writeFile(mainBundle, result.getObfuscatedCode(), "utf8");
+  console.log("✔  index.mjs obfuscated");
 }
 
 buildAll().catch((err) => {
