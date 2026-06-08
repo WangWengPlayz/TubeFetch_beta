@@ -12,7 +12,7 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
       "v3: configurable result limit — add <code>&amp;?=N</code> to control how many results are returned (1–20); omit for the default of 10",
       "v3: URL format: <code>/api/v3/q?=QUERY&amp;?=LIMIT</code> — e.g. <code>/api/v3/q?=taylor swift&amp;?=20</code>",
       "v3: web UI now has <strong>two input boxes</strong> — one for your search title, one for the rank limit (1–20, optional)",
-      "v3: web UI shows <strong>two copy URL buttons</strong> after a search — one for the plain URL (default 10) and one with the limit appended",
+      "v3: web UI copy URL strip is context-aware — shows the plain URL when no limit is set, or the URL with limit appended when a limit is entered (never both at once)",
       "v3: response now includes <code>limit</code> and <code>total_results</code> fields",
       "v3: cache now stores up to 20 results per query — any limit from 1–20 is served from the same cache entry without a refetch (more efficient)",
       "v3: invalid limit (not 1–20, or non-integer) returns 400 with a clear error message before touching ApiCount",
@@ -2425,11 +2425,15 @@ async function fetchEp(n){
       var lim4raw=document.getElementById('q4limit').value.trim();
       var lim4num=parseInt(lim4raw,10);
       var base4='/api/v3/q?='+encodeURIComponent(q4raw);
+      var hasLimit=lim4raw&&!isNaN(lim4num);
       urlStore4a=base4;
-      urlStore4b=base4+'&?='+(lim4raw&&!isNaN(lim4num)?lim4num:10);
+      urlStore4b=base4+'&?='+(hasLimit?lim4num:10);
       var el4a=document.getElementById('curl4a-text'); if(el4a) el4a.textContent=base4;
-      var el4b=document.getElementById('curl4b-text'); if(el4b) el4b.textContent=base4+'&?='+(lim4raw&&!isNaN(lim4num)?lim4num:10);
-      if(resp.ok){ sv('curl4a',true,'flex'); sv('curl4b',true,'flex'); }
+      var el4b=document.getElementById('curl4b-text'); if(el4b) el4b.textContent=base4+'&?='+(hasLimit?lim4num:10);
+      if(resp.ok){
+        sv('curl4a',!hasLimit,'flex');
+        sv('curl4b',!!hasLimit,'flex');
+      }
     } else {
       var curlTextEl=document.getElementById('curl'+n+'-text');
       if(curlTextEl) curlTextEl.textContent=url;

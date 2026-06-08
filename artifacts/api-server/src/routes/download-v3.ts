@@ -137,7 +137,17 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
   const rawLimit = req.query["?"];
   if (rawLimit !== undefined) {
     const parsed = parseInt(String(rawLimit), 10);
-    if (Number.isNaN(parsed) || parsed < LIMIT_MIN || parsed > LIMIT_MAX) {
+    if (!Number.isNaN(parsed) && parsed > LIMIT_MAX) {
+      res.status(400).json({
+        credit: "MJL",
+        version: VERSION,
+        ms: Date.now() - t0,
+        error: `Search limit exceeded — the maximum is ${LIMIT_MAX} results per request.`,
+        tip: `Set the limit to ${LIMIT_MAX} or lower, e.g. /api/v3/q?=QUERY&?=${LIMIT_MAX}`,
+      });
+      return;
+    }
+    if (Number.isNaN(parsed) || parsed < LIMIT_MIN) {
       res.status(400).json({
         credit: "MJL",
         version: VERSION,

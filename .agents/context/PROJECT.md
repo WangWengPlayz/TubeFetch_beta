@@ -205,7 +205,7 @@ YouTube search results with configurable limit. Accepts keywords/titles only —
 
 URL format: `/api/v3/q?=QUERY` (default 10) or `/api/v3/q?=QUERY&?=LIMIT` (1–20)
 - Limit param key is `"?"` (i.e. `req.query["?"]`), parsed from `&?=N` in the URL
-- Default: 10. Min: 1. Max: 20. Invalid limit → 400 before ApiCount increment.
+- Default: 10. Min: 1. Max: 20. Limit > 20 → specific 400 "Search limit exceeded — max is 20" error. Other invalid (NaN, < 1) → generic 400. Both fire BEFORE `increment()` — not counted in ApiCount.
 
 Cache strategy: always fetches and stores up to 20 results per query. The limit is sliced at response time — so one cache entry serves any limit 1–20 without a refetch.
 
