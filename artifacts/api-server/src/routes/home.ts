@@ -5,6 +5,18 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.2.8",
+    date: "2026-06-08",
+    tag: "current",
+    notes: [
+      "v3: configurable result limit — add <code>&amp;?=N</code> to control how many results are returned (1–20); omit for the default of 10",
+      "v3: URL format: <code>/api/v3/q?=QUERY&amp;?=LIMIT</code> — e.g. <code>/api/v3/q?=taylor swift&amp;?=20</code>",
+      "v3: response now includes <code>limit</code> field — shows the limit that was applied to the response",
+      "v3: cache now stores up to 20 results per query — any limit from 1–20 is served from the same cache entry without a refetch (more efficient)",
+      "v3: invalid limit (not 1–20, or non-integer) returns 400 with a clear error message before touching ApiCount",
+    ],
+  },
+  {
     version: "1.2.7",
     date: "2026-06-08",
     tag: "big-update",

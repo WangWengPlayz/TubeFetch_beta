@@ -14,7 +14,7 @@ A free REST API that accepts a YouTube URL **or a plain title/keyword** and retu
 |---|---|
 | `GET /api/v1/q?=(url or title)` | Full metadata + MP4 HD & MP3 download links |
 | `GET /api/v2/q?=(url or title)` | Fast: title + MP4 & MP3 links only |
-| `GET /api/v3/q?=(search query)` | Top 10 YouTube search results with full metadata |
+| `GET /api/v3/q?=(search query)` | YouTube search results — default 10, up to 20 with `&?=N` |
 | `GET /api/stats` | Total API call count |
 | `GET /api/uptime` | Server uptime |
 | `GET /api/healthz` | Liveness probe |
@@ -30,8 +30,14 @@ curl "https://your-domain.com/api/v1/q?=bohemian rhapsody"
 # Fast title + links
 curl "https://your-domain.com/api/v2/q?=https://youtu.be/dQw4w9WgXcQ"
 
-# Top 10 search results
+# Top 10 search results (default)
 curl "https://your-domain.com/api/v3/q?=lofi hip hop"
+
+# Top 20 search results
+curl "https://your-domain.com/api/v3/q?=lofi hip hop&?=20"
+
+# Custom limit (e.g. 5)
+curl "https://your-domain.com/api/v3/q?=lofi hip hop&?=5"
 ```
 
 ---

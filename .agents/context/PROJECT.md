@@ -20,7 +20,7 @@ note: The production build (dist/index.mjs) is obfuscated. This file is the auth
 TubeFetch is a **YouTube Downloader REST API** built with Node.js 24 + Express 5 + TypeScript 5.9 in a pnpm monorepo. It accepts a YouTube URL or plain keyword/title and returns direct MP4 and MP3 download links, video metadata, and search results — no YouTube API key required.
 
 - Author: **MJL**
-- Current version: **1.2.7**
+- Current version: **1.2.8**
 - All rights reserved © 2024–2026 MJL
 
 ---
@@ -201,10 +201,16 @@ Response shape:
 
 **`src/routes/download-v3.ts`** — `/api/v3/q`
 
-Top 10 YouTube search results. Accepts keywords/titles only — rejects YouTube URLs with 400.
+YouTube search results with configurable limit. Accepts keywords/titles only — rejects YouTube URLs with 400 (not counted against ApiCount).
 
-Response: array of 10 result objects, each with `rank`, `video_id`, `url`, `short_url`, `title`, `description`, `channel_name`, `channel_url`, `published`, `duration`, `duration_seconds`, `thumbnail`, `views`, `keywords`, `category`.
-Plus top-level: `ApiCount`, `cached`, `ms`.
+URL format: `/api/v3/q?=QUERY` (default 10) or `/api/v3/q?=QUERY&?=LIMIT` (1–20)
+- Limit param key is `"?"` (i.e. `req.query["?"]`), parsed from `&?=N` in the URL
+- Default: 10. Min: 1. Max: 20. Invalid limit → 400 before ApiCount increment.
+
+Cache strategy: always fetches and stores up to 20 results per query. The limit is sliced at response time — so one cache entry serves any limit 1–20 without a refetch.
+
+Response fields (top-level): `credit`, `version`, `query`, `limit`, `total_results`, `results[]`, `cached`, `ApiCount`, `ms`
+Each result object: `rank`, `video_id`, `url`, `short_url`, `title`, `description`, `channel_name`, `channel_url`, `published`, `duration`, `duration_seconds`, `thumbnail`, `views`, `keywords`, `category`
 
 ---
 
