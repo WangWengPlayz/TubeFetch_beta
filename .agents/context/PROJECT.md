@@ -238,7 +238,7 @@ Flow:
 3. Cache check (same TtlCache strategy, separate cache instance)
 4. `fetchPayload(videoId, url, knownTitle)`:
    - Calls `fetchDownloadLinks(url)` (always)
-   - Title resolution: `knownTitle` (keyword path) → `links.title` (from btch Server 1) → `yts({ videoId })` fallback (rare, only if btch failed and nayan was used)
+   - Title resolution: `knownTitle` (keyword path) → `links.title` (from btch Server 1). The `yts({ videoId })` fallback is ONLY used when Server 2 (nayan) ran — nayan does not return a title so a separate lookup is needed. btch (Server 1) always returns the title in its response; no extra package is called on that path.
 
 Response shape (v1.2.9 — `video_id`, `duration`, `thumbnail` removed):
 ```json

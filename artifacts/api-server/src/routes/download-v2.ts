@@ -68,10 +68,10 @@ async function fetchPayload(
 
   let title = knownTitle ?? links?.title ?? null;
 
-  // URL path fallback: ytdl failed (nayan was used) so links.title is null.
-  // Try yts({ videoId }) to recover the title. This is rare — ytdl succeeds
-  // in the vast majority of requests.
-  if (!title) {
+  // Title fallback via yts({ videoId }) is ONLY used when Server 2 (nayan) ran.
+  // btch (Server 1) already returns the title in its response — no extra call needed.
+  // nayan does not return a title, so a separate lookup is needed for that path.
+  if (!title && links?.server === 2) {
     try {
       const info = await dedup(`yts-id:${videoId}`, () =>
         withTimeout(yts({ videoId }), 12_000, "yt-search-id"),
