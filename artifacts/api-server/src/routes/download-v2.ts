@@ -23,6 +23,9 @@ interface V2Payload {
 }
 
 interface V2Response extends V2Payload {
+  video_id: string;
+  thumbnail: string;
+  duration: string | null;
   ApiCount: number;
   cached: boolean;
   ms: number;
@@ -138,18 +141,22 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     let videoId: string | null = null;
     let youtubeUrl: string;
     let knownTitle: string | null = null;
+    let thumbnail: string | null = null;
+    let duration: string | null = null;
 
     if (isUrl(input)) {
       videoId = extractVideoId(input);
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId!}`;
-      // Use cached title if available; otherwise fetchPayload resolves it in parallel with dl.
       knownTitle = videoIdToTitle.get(videoId) ?? null;
+      // Thumbnail derived from videoId — no extra request needed.
+      thumbnail = `https://i.ytimg.com/vi/${videoId!}/hqdefault.jpg`;
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         knownTitle = videoIdToTitle.get(videoId) ?? null;
+        thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -169,15 +176,28 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
         videoId = first.videoId;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         knownTitle = first.title ?? null;
+        thumbnail = first.thumbnail || first.image || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+        duration = first.duration?.timestamp ?? null;
         queryToId.set(input, videoId);
         if (knownTitle) videoIdToTitle.set(videoId, knownTitle);
       }
     }
 
+    // Guaranteed non-null thumbnail fallback.
+    const resolvedThumb = thumbnail ?? `https://i.ytimg.com/vi/${videoId!}/hqdefault.jpg`;
+
     const hit = cache.getWithMeta(videoId);
     if (hit) {
       res.setHeader("Cache-Control", "private, no-store");
-      res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies V2Response);
+      res.json({
+        ...hit.value,
+        video_id: videoId!,
+        thumbnail: resolvedThumb,
+        duration,
+        ApiCount,
+        cached: true,
+        ms: Date.now() - t0,
+      } satisfies V2Response);
       if (hit.stale) {
         setImmediate(() => {
           dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null))
@@ -194,7 +214,15 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     );
     cache.set(videoId, payload);
     res.setHeader("Cache-Control", "private, no-store");
-    res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies V2Response);
+    res.json({
+      ...payload,
+      video_id: videoId!,
+      thumbnail: resolvedThumb,
+      duration,
+      ApiCount,
+      cached: false,
+      ms: Date.now() - t0,
+    } satisfies V2Response);
   } catch (err: unknown) {
     req.log.error({ err, input }, "v2 YouTube download error");
     res.status(500).json({

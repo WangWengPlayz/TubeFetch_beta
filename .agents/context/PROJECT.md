@@ -168,9 +168,9 @@ Thumbnail fallback chain: `yts.thumbnail` → `yts.image` → `links.thumbnail` 
 
 ---
 
-**`src/routes/download-v2.ts`** — `/api/v2/q`
+**`src/routes/download-v2.ts`** — `/api/v2/q` — **updated in v1.2.8**
 
-Fast endpoint — title + links only. Minimal response, designed for speed.
+Fast endpoint — title, thumbnail, video_id, duration + links. Lightweight but richer than before.
 
 Flow:
 1. Same validation and videoId resolution as v1

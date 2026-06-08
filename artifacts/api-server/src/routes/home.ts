@@ -11,9 +11,13 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
     notes: [
       "v3: configurable result limit — add <code>&amp;?=N</code> to control how many results are returned (1–20); omit for the default of 10",
       "v3: URL format: <code>/api/v3/q?=QUERY&amp;?=LIMIT</code> — e.g. <code>/api/v3/q?=taylor swift&amp;?=20</code>",
-      "v3: response now includes <code>limit</code> field — shows the limit that was applied to the response",
+      "v3: web UI now has <strong>two input boxes</strong> — one for your search title, one for the rank limit (1–20, optional)",
+      "v3: web UI shows <strong>two copy URL buttons</strong> after a search — one for the plain URL (default 10) and one with the limit appended",
+      "v3: response now includes <code>limit</code> and <code>total_results</code> fields",
       "v3: cache now stores up to 20 results per query — any limit from 1–20 is served from the same cache entry without a refetch (more efficient)",
       "v3: invalid limit (not 1–20, or non-integer) returns 400 with a clear error message before touching ApiCount",
+      "v2: web UI now shows a <strong>thumbnail preview</strong> with a clickable YouTube player — same play-on-click experience as v1",
+      "Web: all endpoint descriptions, the About section, and FAQ updated to reflect the latest v2 and v3 capabilities",
     ],
   },
   {
@@ -252,7 +256,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What is the difference between v1, v2, and v3?",
-    a: "<strong>v1</strong> returns the richest response — full metadata (title, author, thumbnail, duration, views, likes, description, keywords, category, short_url) plus MP4 HD &amp; MP3 download links. <strong>v2</strong> is the fastest and lightest — returns just the video <code>title</code> and direct MP4 &amp; MP3 download links with minimal overhead; ideal for bots and scripts that only need the links. <strong>v3</strong> is search-only — pass a keyword or title and get a ranked list of up to 10 YouTube results (url, short_url, title, channel, duration, views, keywords, category); YouTube URLs are rejected by v3.",
+    a: "<strong>v1</strong> returns the richest response — full metadata (title, author, thumbnail, duration, views, likes, description, keywords, category, short_url) plus MP4 HD &amp; MP3 download links. <strong>v2</strong> is the fastest and lightest — returns the video <code>title</code>, <code>thumbnail</code>, <code>video_id</code>, and direct MP4 &amp; MP3 download links with minimal overhead; ideal for bots and scripts that only need the links. <strong>v3</strong> is search-only — pass a keyword or title and get 1–20 ranked YouTube results (default 10; add <code>&amp;?=N</code> to set the limit); YouTube URLs are rejected by v3.",
   },
   {
     q: "How long are responses cached?",
@@ -1698,6 +1702,17 @@ function buildHtml(version: string, baseUrl: string): string {
               </button>
             </div>
             <div class="v2-card" id="v2card" style="display:none">
+              <div class="r-thumb" id="v2-thumb-wrap" style="display:none;margin-bottom:14px">
+                <img id="v2-thumb-img" src="" alt="" class="r-thumb-img"/>
+                <span class="r-dur" id="v2-dur" style="display:none"></span>
+                <div class="r-play-overlay" id="v2-play-overlay" onclick="startV2Preview()">
+                  <div class="r-play-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+                  <span class="r-play-label">Preview</span>
+                </div>
+                <div class="r-yt-wrap" id="v2-yt-wrap">
+                  <div id="v2-yt-player"></div>
+                </div>
+              </div>
               <div class="v2-title" id="v2-title-el" style="display:none"></div>
               <div class="v2-label">Download Links</div>
               <div class="v2-dl" id="v2-dl"></div>
@@ -1716,15 +1731,16 @@ function buildHtml(version: string, baseUrl: string): string {
     <div class="ep-card reveal reveal-d3" id="ep4">
       <div class="ep-header" onclick="toggleEp(4)">
         <span class="ep-method v3">GET</span>
-        <span class="ep-path">/api/v3/q?=(title or keyword)</span>
-        <span class="ep-desc-label">Top 10 search results <span class="ep-badge-new">★ New</span></span>
+        <span class="ep-path">/api/v3/q?=(title)&amp;?=(1–20)</span>
+        <span class="ep-desc-label">Search results — 1 to 20 ranked <span class="ep-badge-new">★ New</span></span>
         <span class="ep-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>
       </div>
       <div class="ep-body">
         <div class="ep-body-inner">
-          <p class="ep-info">Returns up to <strong>10 ranked YouTube search results</strong> — each with <code>rank</code>, <code>video_id</code>, <code>url</code>, <code>short_url</code>, <code>title</code>, <code>description</code>, <code>channel_name</code>, <code>channel_url</code>, <code>published</code>, <code>duration</code>, <code>thumbnail</code>, <code>views</code>, <code>keywords</code>, and <code>category</code>. Response includes <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>. YouTube URLs are rejected — use v1 or v2 for those.</p>
+          <p class="ep-info">Returns <strong>1–20 ranked YouTube search results</strong> — default is 10. Add <code>&amp;?=N</code> to control how many you get (e.g. <code>/api/v3/q?=top hits&amp;?=20</code>). Each result includes <code>rank</code>, <code>video_id</code>, <code>url</code>, <code>short_url</code>, <code>title</code>, <code>description</code>, <code>channel_name</code>, <code>channel_url</code>, <code>published</code>, <code>duration</code>, <code>thumbnail</code>, <code>views</code>, <code>keywords</code>, and <code>category</code>. Response also includes <code>limit</code>, <code>total_results</code>, <code>cached</code>, <code>ApiCount</code>, and <code>ms</code>. YouTube URLs are rejected — use v1 or v2 for those.</p>
           <div class="ep-input-row">
             <input class="ep-input" id="q4" type="text" placeholder="e.g. top hits 2025  or  relaxing lofi music" onkeydown="if(event.key==='Enter')fetchEp(4)" autocomplete="off"/>
+            <input class="ep-input" id="q4limit" type="number" min="1" max="20" placeholder="Limit (1–20)" style="max-width:130px;flex-shrink:0" onkeydown="if(event.key==='Enter')fetchEp(4)" autocomplete="off"/>
             <button class="ep-fetch-btn ripple-container" id="btn4" onclick="addRipple(event);fetchEp(4)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>Search</span>
             </button>
@@ -1741,10 +1757,16 @@ function buildHtml(version: string, baseUrl: string): string {
               <span class="ep-ms" id="ms4"></span>
               <span class="ep-apicount" id="apc4"></span>
             </div>
-            <div class="copy-url-strip" id="curl4" style="display:none">
-              <code id="curl4-text"></code>
-              <button class="copy-url-btn" onclick="copyUrl(4)">
+            <div class="copy-url-strip" id="curl4a" style="display:none">
+              <code id="curl4a-text"></code>
+              <button class="copy-url-btn" onclick="copyUrlV3('a')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy URL
+              </button>
+            </div>
+            <div class="copy-url-strip" id="curl4b" style="display:none">
+              <code id="curl4b-text"></code>
+              <button class="copy-url-btn" onclick="copyUrlV3('b')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy with Limit
               </button>
             </div>
             <div class="v3-list" id="v3list" style="display:none"></div>
@@ -1829,7 +1851,7 @@ function buildHtml(version: string, baseUrl: string): string {
 
   <div class="card about reveal" id="about">
     <div class="card-title">About TubeFetch</div>
-    <p>Pass any YouTube URL or plain search title to <code>/api/v1/q</code> for full metadata or <code>/api/v2/q</code> for a faster response with just the download links. Use <code>/api/v3/q</code> to get a ranked list of up to 10 search results. Get direct <strong>MP4 HD</strong> and <strong>MP3</strong> URLs ready for bots, apps, or scripts. Results are cached for <strong>5 minutes</strong>. Every response includes a <strong>ms</strong> timing field and an <strong>ApiCount</strong> showing the total number of API calls served.</p>
+    <p>Pass any YouTube URL or plain search title to <code>/api/v1/q</code> for full metadata or <code>/api/v2/q</code> for a faster response with the title, thumbnail, and download links. Use <code>/api/v3/q</code> to get a ranked list of 1–20 search results (default 10 — add <code>&amp;?=N</code> to control the count). Get direct <strong>MP4 HD</strong> and <strong>MP3</strong> URLs ready for bots, apps, or scripts. Results are cached for <strong>5 minutes</strong>. Every response includes a <strong>ms</strong> timing field and an <strong>ApiCount</strong> showing the total number of API calls served.</p>
   </div>
 
   <div class="card disc reveal" id="disclaimer">
@@ -2126,9 +2148,13 @@ function smOutsideClick(e){ if(e.target===document.getElementById('sm-overlay'))
 ════════════════════════════════ */
 var rawStore={0:'',1:'',2:'',3:'',4:''};
 var urlStore={0:'',1:'',2:'',3:'',4:''};
+var urlStore4a='';
+var urlStore4b='';
 var descExpanded=false;
 var v1VideoId='';
 var ytPlayerInstance=null;
+var v2VideoId='';
+var v2YtPlayer=null;
 var ytApiReady=false;
 var ytApiCallbacks=[];
 var cdTimer=null,cdInterval=null;
@@ -2171,6 +2197,15 @@ function copyUrl(n){
   if(!u)return;
   navigator.clipboard.writeText(u).then(function(){
     var b=document.querySelector('#curl'+n+' .copy-url-btn');
+    if(b){ var h=b.innerHTML; b.textContent='Copied!'; setTimeout(function(){ b.innerHTML=h; },1500); }
+  });
+}
+function copyUrlV3(which){
+  var u=which==='b'?urlStore4b:urlStore4a;
+  if(!u)return;
+  navigator.clipboard.writeText(window.location.origin+u).then(function(){
+    var id=which==='b'?'curl4b':'curl4a';
+    var b=document.querySelector('#'+id+' .copy-url-btn');
     if(b){ var h=b.innerHTML; b.textContent='Copied!'; setTimeout(function(){ b.innerHTML=h; },1500); }
   });
 }
@@ -2225,6 +2260,32 @@ function renderV3List(results){
     html+='</div></div>';
   }
   list.innerHTML=html; sv('v3list',true,'block');
+}
+
+/* ════════════════════════════════
+   V2 VIDEO PREVIEW
+════════════════════════════════ */
+function resetV2Preview(){
+  if(v2YtPlayer){ try{ v2YtPlayer.destroy(); }catch(e){} v2YtPlayer=null; }
+  var pd=document.getElementById('v2-yt-player'); if(pd) pd.innerHTML='';
+  sv('v2-yt-wrap',false); sv('v2-play-overlay',true,'flex');
+  var img=document.getElementById('v2-thumb-img'); if(img){ img.style.opacity='1'; img.style.transition=''; }
+}
+function startV2Preview(){
+  if(!v2VideoId)return;
+  sv('v2-play-overlay',false);
+  var img=document.getElementById('v2-thumb-img');
+  if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
+  var wrap=document.getElementById('v2-yt-wrap'); if(wrap) wrap.style.display='block';
+  withYtApi(function(){
+    if(v2YtPlayer){ try{ v2YtPlayer.destroy(); }catch(e){} v2YtPlayer=null; }
+    var pd=document.getElementById('v2-yt-player'); if(pd) pd.innerHTML='';
+    v2YtPlayer=new YT.Player('v2-yt-player',{
+      videoId:v2VideoId,width:'100%',height:'100%',
+      playerVars:{autoplay:1,rel:0,modestbranding:1,playsinline:1,controls:1},
+      events:{onReady:function(e){ e.target.playVideo(); }}
+    });
+  });
 }
 
 /* ════════════════════════════════
@@ -2317,8 +2378,8 @@ async function fetchEp(n){
 
   sv('skel'+n,true,'flex'); sv('res'+n,false);
   if(n===0){ sv('rcard0',false); sv('curl0',false); resetVideoPreview(); }
-  if(n===3){ sv('v2card',false); sv('curl3',false); }
-  if(n===4){ sv('v3list',false); sv('curl4',false); }
+  if(n===3){ sv('v2card',false); sv('curl3',false); resetV2Preview(); }
+  if(n===4){ sv('v3list',false); sv('curl4a',false); sv('curl4b',false); }
 
   var url;
   if(n===0){
@@ -2332,7 +2393,10 @@ async function fetchEp(n){
   } else if(n===4){
     var q4=document.getElementById('q4').value.trim();
     if(!q4){ setBtnDefault(n); sv('skel'+n,false,'flex'); return; }
-    url='/api/v3/q?='+encodeURIComponent(q4);
+    var lim4=document.getElementById('q4limit').value.trim();
+    var lim4n=parseInt(lim4,10);
+    if(lim4&&(isNaN(lim4n)||lim4n<1||lim4n>20)){ setBtnDefault(n); sv('skel'+n,false,'flex'); return; }
+    url='/api/v3/q?='+encodeURIComponent(q4)+(lim4?'&?='+lim4n:'');
   } else if(n===1){
     url='/api/uptime';
   } else {
@@ -2356,9 +2420,21 @@ async function fetchEp(n){
     var cacEl=document.getElementById('cac'+n);
     if(cacEl) cacEl.style.display=(typeof data==='object'&&data&&data.cached)?'inline-flex':'none';
     showApiCount(n,data);
-    var curlTextEl=document.getElementById('curl'+n+'-text');
-    if(curlTextEl) curlTextEl.textContent=url;
-    if(n===0||n===3||n===4) sv('curl'+n,resp.ok,'flex');
+    if(n===4){
+      var q4raw=document.getElementById('q4').value.trim();
+      var lim4raw=document.getElementById('q4limit').value.trim();
+      var lim4num=parseInt(lim4raw,10);
+      var base4='/api/v3/q?='+encodeURIComponent(q4raw);
+      urlStore4a=base4;
+      urlStore4b=base4+'&?='+(lim4raw&&!isNaN(lim4num)?lim4num:10);
+      var el4a=document.getElementById('curl4a-text'); if(el4a) el4a.textContent=base4;
+      var el4b=document.getElementById('curl4b-text'); if(el4b) el4b.textContent=base4+'&?='+(lim4raw&&!isNaN(lim4num)?lim4num:10);
+      if(resp.ok){ sv('curl4a',true,'flex'); sv('curl4b',true,'flex'); }
+    } else {
+      var curlTextEl=document.getElementById('curl'+n+'-text');
+      if(curlTextEl) curlTextEl.textContent=url;
+      if(n===0||n===3) sv('curl'+n,resp.ok,'flex');
+    }
     document.getElementById('raw'+n).innerHTML=typeof data==='string'?data:hl(rawStore[n]);
     sv('res'+n,true,'block');
 
@@ -2407,6 +2483,15 @@ async function fetchEp(n){
     /* ── V2 quick card ── */
     if(n===3&&typeof data==='object'&&data&&data.media){
       var m=data.media;
+      v2VideoId=data.video_id||'';
+      var v2ThEl=document.getElementById('v2-thumb-img');
+      if(v2ThEl&&data.thumbnail){
+        v2ThEl.src=data.thumbnail; v2ThEl.alt=data.title||''; v2ThEl.style.opacity='1';
+        sv('v2-play-overlay',!!v2VideoId,'flex');
+        sv('v2-thumb-wrap',true,'block');
+        var v2DurEl=document.getElementById('v2-dur');
+        if(v2DurEl){ v2DurEl.textContent=data.duration||''; v2DurEl.style.display=data.duration?'inline-block':'none'; }
+      } else { sv('v2-thumb-wrap',false); }
       var titleEl=document.getElementById('v2-title-el');
       if(titleEl){ if(data.title){ titleEl.textContent=data.title; titleEl.style.display='block'; } else { titleEl.style.display='none'; } }
       var v2html='';
