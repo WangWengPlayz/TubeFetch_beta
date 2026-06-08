@@ -8,6 +8,7 @@ import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
 import { fetchDownloadLinks } from "../lib/downloader";
+import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
 
@@ -95,6 +96,16 @@ async function fetchPayload(
 router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
 
+  // ── Admin: block during maintenance shutdown ──────────────────────────────
+  if (isShutdown()) {
+    emitAdminLog("warn", "[v2] Request blocked — server in shutdown mode");
+    res.status(503).json({
+      credit: "MJL", version: VERSION, status: "shutdown",
+      message: "Temporary Shutdown — Admins are currently fixing or improving things. We'll be back in a little while — please be patient.",
+    });
+    return;
+  }
+
   // ── Input validation (before ApiCount — bad input is not a real request) ──
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
@@ -129,6 +140,8 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   // ── Count only real, processable requests ─────────────────────────────────
   const ApiCount = increment();
+  recordApiCall();
+  emitAdminLog("info", `[v2] ${input.slice(0, 80)}`);
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
@@ -142,13 +155,13 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     if (isUrl(input)) {
       videoId = extractVideoId(input);
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId!}`;
-      knownTitle = videoIdToTitle.get(videoId) ?? null;
+      knownTitle = videoIdToTitle.get(videoId!) ?? null;
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        knownTitle = videoIdToTitle.get(videoId) ?? null;
+        knownTitle = videoIdToTitle.get(videoId!) ?? null;
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -173,7 +186,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       }
     }
 
-    const hit = cache.getWithMeta(videoId);
+    const hit = cache.getWithMeta(videoId!);
     if (hit) {
       res.setHeader("Cache-Control", "private, no-store");
       res.json({
@@ -196,8 +209,11 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       `fetch-v2:${videoId}`,
       () => fetchPayload(videoId!, youtubeUrl, knownTitle),
     );
-    cache.set(videoId, payload);
+    cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");
+    const srv2 = payload.media.server;
+    if (srv2 === 1 || srv2 === 2) recordServerResult(srv2, !!(payload.media.mp4 || payload.media.mp3));
+    emitAdminLog("success", `[v2] ✓ ${videoId} server:${srv2 ?? "?"} ${Date.now()-t0}ms`);
     res.json({
       ...payload,
       ApiCount,
@@ -206,6 +222,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     } satisfies V2Response);
   } catch (err: unknown) {
     req.log.error({ err, input }, "v2 YouTube download error");
+    emitAdminLog("error", `[v2] ✗ ${sanitizeError(err)}`);
     res.status(500).json({
       credit: "MJL",
       version: VERSION,

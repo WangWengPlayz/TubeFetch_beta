@@ -1,13 +1,27 @@
 import { Router, type IRouter } from "express";
 import { VERSION } from "../lib/version";
+import { isShutdown } from "../lib/admin-state";
 
 const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.2.9",
+    version: "1.3.0",
     date: "2026-06-08",
     tag: "current",
+    notes: [
+      "New secured <code>/admin</code> route — administrative console for monitoring and controlling the API server",
+      "Real-time dashboard via SSE: live API stats (total calls, success, errors, uptime), Chart.js visualisations (success/error doughnut + calls-per-minute line chart), and package status for both download servers",
+      "3-tab live console streams every v1/v2/v3 request, success, and error directly to the admin panel in real time",
+      "Admin controls: <strong>Temporary Shutdown</strong> suspends all v1/v2/v3 endpoints and pauses ApiCount; <strong>Run</strong> restores service; <strong>Restart</strong> performs a clean server restart",
+      "During Temporary Shutdown: all API endpoints return HTTP 503 with a maintenance notice; the public website shows a prominent shutdown banner",
+      "ApiCount is frozen during shutdown — counts only resume once service is restored",
+    ],
+  },
+  {
+    version: "1.2.9",
+    date: "2026-06-08",
+    tag: "",
     notes: [
       "Bug fix (v3): requesting 20 results now returns 20 results — previous behaviour returned 19 due to insufficient raw results from the search provider; v3 now fetches two pages to guarantee a full set",
       "Bug fix (v2): removed unused fields <code>video_id</code>, <code>duration</code>, and <code>thumbnail</code> from the v2 response — these fields were never part of the intended v2 schema",
@@ -2741,7 +2755,12 @@ router.get("/", (req, res) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Robots-Tag", "noindex");
   res.setHeader("Cache-Control", "no-store");
-  res.type("html").send(buildHtml(VERSION, baseUrl));
+  let html = buildHtml(VERSION, baseUrl);
+  if (isShutdown()) {
+    const banner = `<div id="shutdown-banner" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;border-bottom:2px solid #ef4444;color:#fee2e2;text-align:center;padding:13px 20px;font-size:13px;font-weight:600;letter-spacing:.2px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">⚠&nbsp;&nbsp;Temporary Shutdown — Admins are currently fixing or improving things. We'll be back in a little while — please be patient.</div>`;
+    html = html.replace(/(<body[^>]*>)/, `$1${banner}`);
+  }
+  res.type("html").send(html);
 });
 
 export default router;

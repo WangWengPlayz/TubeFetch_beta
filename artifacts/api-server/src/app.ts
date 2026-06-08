@@ -5,6 +5,8 @@ import pinoHttp from "pino-http";
 import helmet from "helmet";
 import router from "./routes";
 import homeRouter from "./routes/home";
+import adminRouter from "./routes/admin";
+import adminApiRouter from "./routes/admin-api";
 import { logger } from "./lib/logger";
 import { globalApiRateLimit } from "./middleware/rate-limit";
 
@@ -116,6 +118,9 @@ app.get("/og-image.svg", (_req, res) => {
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────────
+// Admin panel and its API — mounted before the public routes, no rate limiting
+app.use(adminRouter);
+app.use(adminApiRouter);
 app.use("/", homeRouter);
 
 // Apply the global rate limiter to all API routes before any handler runs.

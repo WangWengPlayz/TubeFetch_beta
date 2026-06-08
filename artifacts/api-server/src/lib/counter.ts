@@ -1,4 +1,5 @@
 import { MongoClient, Collection } from "mongodb";
+import { isShutdown as _adminIsShutdown } from "./admin-state";
 
 type MongoState = "idle" | "connecting" | "connected" | "no-uri" | "failed";
 
@@ -129,6 +130,8 @@ export async function resetCount(): Promise<void> {
  * the request handler, so even cache-hit responses are not delayed by DB I/O.
  */
 export function increment(): number {
+  if (_adminIsShutdown()) return _localTotal; // suspended during maintenance
+
   _localTotal++;
   _statsCache = null;
   if (_col) {

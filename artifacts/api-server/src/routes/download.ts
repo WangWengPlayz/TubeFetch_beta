@@ -9,6 +9,7 @@ import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
 import { fetchDownloadLinks } from "../lib/downloader";
+import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
 
@@ -161,6 +162,16 @@ async function fetchPayload(
 router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
 
+  // ── Admin: block during maintenance shutdown ──────────────────────────────
+  if (isShutdown()) {
+    emitAdminLog("warn", "[v1] Request blocked — server in shutdown mode");
+    res.status(503).json({
+      version: VERSION, creditTo: "MJL", status: "shutdown",
+      message: "Temporary Shutdown — Admins are currently fixing or improving things. We'll be back in a little while — please be patient.",
+    });
+    return;
+  }
+
   // ── Input validation (before ApiCount — bad input is not a real request) ──
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
@@ -202,6 +213,8 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   // ── Count only real, processable requests ─────────────────────────────────
   const ApiCount = increment();
+  recordApiCall();
+  emitAdminLog("info", `[v1] ${input.slice(0, 80)}`);
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
@@ -247,7 +260,7 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
       }
     }
 
-    const hit = cache.getWithMeta(videoId);
+    const hit = cache.getWithMeta(videoId!);
     if (hit) {
       res.setHeader("Cache-Control", "private, no-store");
       res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies VideoResponse);
@@ -262,11 +275,15 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     }
 
     const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, preInfo));
-    cache.set(videoId, payload);
+    cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");
+    const srv = payload.media.server;
+    if (srv === 1 || srv === 2) recordServerResult(srv, !!(payload.media.mp4 || payload.media.mp3));
+    emitAdminLog("success", `[v1] ✓ ${videoId} server:${srv ?? "?"} ${Date.now()-t0}ms`);
     res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies VideoResponse);
   } catch (err: unknown) {
     req.log.error({ err, input }, "YouTube download error");
+    emitAdminLog("error", `[v1] ✗ ${sanitizeError(err)}`);
     res.status(500).json({
       version: VERSION,
       success: false,

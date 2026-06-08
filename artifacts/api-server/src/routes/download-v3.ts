@@ -7,6 +7,7 @@ import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
+import { isShutdown, emitAdminLog, recordApiCall } from "../lib/admin-state";
 
 const router: IRouter = Router();
 
@@ -55,14 +56,15 @@ function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
 async function fetchPayload(input: string): Promise<V3Payload> {
   const searchResult = await dedup(
     `yts-v3:${input}`,
-    () => withTimeout(yts({ query: input, pages: 2 }), 20_000, "yt-search"),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    () => withTimeout((yts as any)({ query: input, pages: 2 }) as Promise<{ videos: yts.VideoResult[] }>, 20_000, "yt-search"),
   );
 
   // Always fetch up to LIMIT_MAX so the cache can serve any requested limit.
   // Using pages:2 ensures enough raw results to fill 20 video slots.
-  const videos = searchResult.videos.slice(0, LIMIT_MAX);
+  const videos = (searchResult as { videos: yts.VideoResult[] }).videos.slice(0, LIMIT_MAX);
 
-  const results: V3Video[] = videos.map((v, i) => {
+  const results: V3Video[] = videos.map((v: yts.VideoResult, i: number) => {
     const { name: channelName, url: channelUrl } = resolveAuthor(v.author);
     const thumbnail =
       v.thumbnail || v.image || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
@@ -93,6 +95,16 @@ async function fetchPayload(input: string): Promise<V3Payload> {
 
 router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
+
+  // ── Admin: block during maintenance shutdown ──────────────────────────────
+  if (isShutdown()) {
+    emitAdminLog("warn", "[v3] Request blocked — server in shutdown mode");
+    res.status(503).json({
+      credit: "MJL", version: VERSION, status: "shutdown",
+      message: "Temporary Shutdown — Admins are currently fixing or improving things. We'll be back in a little while — please be patient.",
+    });
+    return;
+  }
 
   // ── Validate search query ─────────────────────────────────────────────────
   const validation = validateQuery(req.query[""]);
@@ -167,6 +179,8 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   // ── Count only real, processable requests ─────────────────────────────────
   const ApiCount = increment();
+  recordApiCall();
+  emitAdminLog("info", `[v3] search: ${input.slice(0, 60)} limit:${limit}`);
   res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
@@ -202,6 +216,7 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
     cache.set(input, payload);
     const sliced = payload.results.slice(0, limit);
     res.setHeader("Cache-Control", "private, no-store");
+    emitAdminLog("success", `[v3] ✓ ${sliced.length} results for "${input.slice(0,40)}" ${Date.now()-t0}ms`);
     res.json({
       ...payload,
       query: input,
@@ -214,6 +229,7 @@ router.get("/v3/q", downloadRateLimit, async (req: Request, res: Response) => {
     });
   } catch (err: unknown) {
     req.log.error({ err, input }, "v3 search error");
+    emitAdminLog("error", `[v3] ✗ ${sanitizeError(err)}`);
     res.status(500).json({
       credit: "MJL",
       version: VERSION,

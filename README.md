@@ -1,6 +1,6 @@
 # TubeFetch — YouTube Downloader REST API
 
-> **Version 1.2.9** · Built by **MJL** · All rights reserved
+> **Version 1.3.0** · Built by **MJL** · All rights reserved
 
 A free REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, full video metadata, and top search results — **no API key required**.
 

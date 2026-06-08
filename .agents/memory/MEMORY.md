@@ -1,0 +1,1 @@
+- [Admin panel architecture](admin-panel.md) — v1.3.0 admin at /admin; SSE events, 2FA auth, shutdown control; static import in counter.ts is required (no require() in ESM bundle)
