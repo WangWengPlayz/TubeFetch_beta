@@ -287,9 +287,10 @@ Key sections:
 - **Shutdown banner (v1.3.0)**: If `isShutdown()` is true, a fixed dark-red banner is injected via `html.replace(/(<body[^>]*>)/, `$1${banner}`)` before sending the response
 
 Changelog tag values and their badge colors:
-- `"big-update"` → purple `#a78bfa` — [Big Update]
-- `"hotfix"` → orange `#FFA500` — [Hotfix]
-- `"current"` → red `#FF4444` — [Latest]
+- `"current"` → red `#FF4444` — [Latest] only
+- `"current-hotfix"` → red [Latest] + orange [Hotfix] — used when latest version is also a hotfix
+- `"big-update"` → purple `#a78bfa` — [Big Update] only (no Latest badge)
+- `"hotfix"` → orange `#FFA500` — [Hotfix] only
 - `"initial"` → muted — [Initial]
 - `""` → no badge
 

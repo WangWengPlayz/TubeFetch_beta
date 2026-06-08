@@ -8,7 +8,7 @@ const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }
   {
     version: "1.3.0",
     date: "2026-06-08",
-    tag: "current",
+    tag: "current-hotfix",
     notes: [
       "New secured <code>/admin</code> route — administrative console for monitoring and controlling the API server",
       "Real-time dashboard via SSE: live API stats (total calls, success, errors, uptime), Chart.js visualisations (success/error doughnut + calls-per-minute line chart), and package status for both download servers",
@@ -356,8 +356,10 @@ function buildHtml(version: string, baseUrl: string): string {
     const tagHtml =
       e.tag === "current"
         ? `<span class="cl-tag current">Latest</span>`
+        : e.tag === "current-hotfix"
+        ? `<span class="cl-tag current">Latest</span><span class="cl-tag hotfix">Hotfix</span>`
         : e.tag === "big-update"
-        ? `<span class="cl-tag current">Latest</span><span class="cl-tag big-update">Big Update</span>`
+        ? `<span class="cl-tag big-update">Big Update</span>`
         : e.tag === "hotfix"
         ? `<span class="cl-tag hotfix">Hotfix</span>`
         : e.tag === "initial"
