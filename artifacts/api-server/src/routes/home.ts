@@ -5,9 +5,18 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.2.8",
+    version: "1.2.9",
     date: "2026-06-08",
     tag: "current",
+    notes: [
+      "Bug fix (v3): requesting 20 results now returns 20 results — previous behaviour returned 19 due to insufficient raw results from the search provider; v3 now fetches two pages to guarantee a full set",
+      "Bug fix (v2): removed unused fields <code>video_id</code>, <code>duration</code>, and <code>thumbnail</code> from the v2 response — these fields were never part of the intended v2 schema",
+    ],
+  },
+  {
+    version: "1.2.8",
+    date: "2026-06-08",
+    tag: "",
     notes: [
       "v3: configurable result limit — add <code>&amp;?=N</code> to control how many results are returned (1–20); omit for the default of 10",
       "v3: URL format: <code>/api/v3/q?=QUERY&amp;?=LIMIT</code> — e.g. <code>/api/v3/q?=taylor swift&amp;?=20</code>",

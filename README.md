@@ -1,6 +1,6 @@
 # TubeFetch — YouTube Downloader REST API
 
-> **Version 1.2.7** · Built by **MJL** · All rights reserved
+> **Version 1.2.9** · Built by **MJL** · All rights reserved
 
 A free REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, full video metadata, and top search results — **no API key required**.
 
@@ -46,7 +46,7 @@ curl "https://your-domain.com/api/v3/q?=lofi hip hop&?=5"
 
 ```json
 {
-  "version": "1.2.7",
+  "version": "1.2.9",
   "success": true,
   "creditTo": "MJL",
   "video_id": "dQw4w9WgXcQ",
@@ -77,7 +77,7 @@ curl "https://your-domain.com/api/v3/q?=lofi hip hop&?=5"
 ```json
 {
   "credit": "MJL",
-  "version": "1.2.7",
+  "version": "1.2.9",
   "title": "Rick Astley - Never Gonna Give You Up",
   "media": {
     "mp4": "https://...",

@@ -54,11 +54,12 @@ function resolveAuthor(author: yts.VideoAuthor | string | undefined): {
 
 async function fetchPayload(input: string): Promise<V3Payload> {
   const searchResult = await dedup(
-    `yts:${input}`,
-    () => withTimeout(yts(input), 15_000, "yt-search"),
+    `yts-v3:${input}`,
+    () => withTimeout(yts({ query: input, pages: 2 }), 20_000, "yt-search"),
   );
 
   // Always fetch up to LIMIT_MAX so the cache can serve any requested limit.
+  // Using pages:2 ensures enough raw results to fill 20 video slots.
   const videos = searchResult.videos.slice(0, LIMIT_MAX);
 
   const results: V3Video[] = videos.map((v, i) => {

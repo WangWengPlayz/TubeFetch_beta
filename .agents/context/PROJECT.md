@@ -20,7 +20,7 @@ note: The production build (dist/index.mjs) is obfuscated. This file is the auth
 TubeFetch is a **YouTube Downloader REST API** built with Node.js 24 + Express 5 + TypeScript 5.9 in a pnpm monorepo. It accepts a YouTube URL or plain keyword/title and returns direct MP4 and MP3 download links, video metadata, and search results — no YouTube API key required.
 
 - Author: **MJL**
-- Current version: **1.2.8**
+- Current version: **1.2.9**
 - All rights reserved © 2024–2026 MJL
 
 ---
@@ -168,9 +168,9 @@ Thumbnail fallback chain: `yts.thumbnail` → `yts.image` → `links.thumbnail` 
 
 ---
 
-**`src/routes/download-v2.ts`** — `/api/v2/q` — **updated in v1.2.8**
+**`src/routes/download-v2.ts`** — `/api/v2/q` — **updated in v1.2.9**
 
-Fast endpoint — title, thumbnail, video_id, duration + links. Lightweight but richer than before.
+Fast endpoint — title + links only. Minimal response shape.
 
 Flow:
 1. Same validation and videoId resolution as v1
@@ -180,11 +180,11 @@ Flow:
    - Calls `fetchDownloadLinks(url)` (always)
    - Title resolution: `knownTitle` (keyword path) → `links.title` (from btch Server 1) → `yts({ videoId })` fallback (rare, only if btch failed and nayan was used)
 
-Response shape:
+Response shape (v1.2.9 — `video_id`, `duration`, `thumbnail` removed):
 ```json
 {
   "credit": "MJL",
-  "version": "1.2.7",
+  "version": "1.2.9",
   "title": "...",
   "media": {
     "mp4": "https://...",
@@ -199,7 +199,7 @@ Response shape:
 
 ---
 
-**`src/routes/download-v3.ts`** — `/api/v3/q`
+**`src/routes/download-v3.ts`** — `/api/v3/q` — **updated in v1.2.9**
 
 YouTube search results with configurable limit. Accepts keywords/titles only — rejects YouTube URLs with 400 (not counted against ApiCount).
 
@@ -207,7 +207,7 @@ URL format: `/api/v3/q?=QUERY` (default 10) or `/api/v3/q?=QUERY&?=LIMIT` (1–2
 - Limit param key is `"?"` (i.e. `req.query["?"]`), parsed from `&?=N` in the URL
 - Default: 10. Min: 1. Max: 20. Limit > 20 → specific 400 "Search limit exceeded — max is 20" error. Other invalid (NaN, < 1) → generic 400. Both fire BEFORE `increment()` — not counted in ApiCount.
 
-Cache strategy: always fetches and stores up to 20 results per query. The limit is sliced at response time — so one cache entry serves any limit 1–20 without a refetch.
+Cache strategy: always fetches and stores up to 20 results per query using `pages: 2` (two search pages) to guarantee a full 20-video result set. The limit is sliced at response time — so one cache entry serves any limit 1–20 without a refetch. Dedup key is `yts-v3:${input}` (separate from v1/v2's single-page search).
 
 Response fields (top-level): `credit`, `version`, `query`, `limit`, `total_results`, `results[]`, `cached`, `ApiCount`, `ms`
 Each result object: `rank`, `video_id`, `url`, `short_url`, `title`, `description`, `channel_name`, `channel_url`, `published`, `duration`, `duration_seconds`, `thumbnail`, `views`, `keywords`, `category`
