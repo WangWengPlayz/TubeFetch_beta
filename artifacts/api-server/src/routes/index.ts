@@ -7,12 +7,14 @@ import downloadV3Router from "./download-v3";
 import statsRouter from "./stats";
 import proxyRouter from "./proxy";
 import mergeRouter from "./merge";
+import dlRouter from "./dl";
 import homeRouter from "./home";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(uptimeRouter);
+router.use(dlRouter);
 router.use(proxyRouter);
 router.use(mergeRouter);
 router.use(downloadRouter);

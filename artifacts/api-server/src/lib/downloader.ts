@@ -1,6 +1,8 @@
 import { createRequire } from "module";
-import { resolve } from "path";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
 import { withTimeout } from "./dedup";
+import { storeUrl } from "./url-store";
 
 const _require = createRequire(import.meta.url);
 
@@ -27,7 +29,7 @@ interface YtDlpInstance {
 }
 
 interface YtDlpConstructor {
-  new (): YtDlpInstance;
+  new (options?: { binaryPath?: string }): YtDlpInstance;
 }
 
 const QUALITIES = ["1080p", "720p", "480p", "360p"] as const;
@@ -57,16 +59,16 @@ export interface DownloadLinks {
   server: 1;
 }
 
-// Standalone yt-dlp binary path (doesn't require Python)
-const YTDLP_BIN = resolve(process.cwd(), "bin", "yt-dlp");
+// Resolve binary path relative to the compiled output file so it works
+// regardless of which directory the process is started from.
+const _distDir = dirname(fileURLToPath(import.meta.url));
+const YTDLP_BIN = resolve(_distDir, "..", "bin", "yt-dlp");
 
 let _ytDlp: YtDlpInstance | null = null;
 function getYtDlp(): YtDlpInstance {
   if (!_ytDlp) {
     const { YtDlp } = _require("ytdlp-nodejs") as { YtDlp: YtDlpConstructor };
-    const instance = new YtDlp() as YtDlpInstance & { binaryPath?: string };
-    instance.binaryPath = YTDLP_BIN;
-    _ytDlp = instance;
+    _ytDlp = new YtDlp({ binaryPath: YTDLP_BIN });
   }
   return _ytDlp;
 }
@@ -84,9 +86,8 @@ function proxyUrl(
   ext: string,
   title: string | null,
 ): string {
-  let u = `${baseUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}&ext=${encodeURIComponent(ext)}`;
-  if (title) u += `&title=${encodeURIComponent(title)}`;
-  return u;
+  const token = storeUrl({ type: "proxy", url: rawUrl, ext, title });
+  return `${baseUrl}/api/dl/${token}`;
 }
 
 function mergeUrl(
@@ -96,10 +97,14 @@ function mergeUrl(
   title: string | null,
   durationSeconds: number | null,
 ): string {
-  let u = `${baseUrl}/api/merge?v=${encodeURIComponent(videoRaw)}&a=${encodeURIComponent(audioRaw)}`;
-  if (title) u += `&title=${encodeURIComponent(title)}`;
-  if (durationSeconds != null && durationSeconds > 0) u += `&dur=${Math.ceil(durationSeconds)}`;
-  return u;
+  const token = storeUrl({
+    type: "merge",
+    v: videoRaw,
+    a: audioRaw,
+    title,
+    dur: durationSeconds != null && durationSeconds > 0 ? Math.ceil(durationSeconds) : null,
+  });
+  return `${baseUrl}/api/dl/${token}`;
 }
 
 export async function fetchDownloadLinks(
