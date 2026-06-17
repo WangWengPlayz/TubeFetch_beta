@@ -8,7 +8,7 @@ import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-import { fetchDownloadLinks, type QualityMap } from "../lib/downloader";
+import { fetchDownloadLinks, type QualityMap, type StreamInfo } from "../lib/downloader";
 import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
@@ -26,6 +26,8 @@ interface VideoPayload {
     mp4: { url: string; quality: string } | null;
     mp3: { url: string } | null;
     qualities: QualityMap;
+    preview_url: string | null;
+    streams: StreamInfo[];
     server: 1 | null;
   };
 }
@@ -90,12 +92,6 @@ function bestQualityLabel(qualities: QualityMap, mp4Url: string | null): string 
   return order.find((q) => qualities[q] === mp4Url) ?? "HD";
 }
 
-/**
- * Fetch and assemble the full video payload.
- *
- * @param preInfo - Pre-loaded yts.VideoResult from a keyword search.
- * @param baseUrl - Server base URL used to build proxy/merge links.
- */
 async function fetchPayload(
   videoId: string,
   youtubeUrl: string,
@@ -128,13 +124,17 @@ async function fetchPayload(
     info?.description ?? "",
   );
 
+  // Prefer duration_seconds from yt-dlp (more reliable); fall back to yt-search
+  const durationSeconds = links?.duration_seconds ?? info?.duration?.seconds ?? null;
+  const durationTimestamp = info?.duration?.timestamp ?? null;
+
   const rawInfo: Record<string, unknown> = {
-    title:            info?.title ?? null,
+    title:            links?.title ?? info?.title ?? null,
     author:           authorName,
     channel_url:      channelUrl,
     thumbnail,
-    duration:         info?.duration?.timestamp ?? null,
-    duration_seconds: info?.duration?.seconds ?? null,
+    duration:         durationTimestamp,
+    duration_seconds: durationSeconds,
     views:            info?.views ?? null,
     likes:            info?.likes ?? null,
     published:        info?.ago ?? null,
@@ -160,6 +160,8 @@ async function fetchPayload(
       mp4: mp4Url ? { url: mp4Url, quality } : null,
       mp3: mp3Url ? { url: mp3Url } : null,
       qualities,
+      preview_url: links?.preview_url ?? null,
+      streams: links?.streams ?? [],
       server: links?.server ?? null,
     },
   };

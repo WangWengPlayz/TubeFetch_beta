@@ -4,7 +4,7 @@ import http from "http";
 
 const router: IRouter = Router();
 
-const ALLOWED_HOST = /^[a-z0-9-]+\.googlevideo\.com$/;
+const ALLOWED_HOSTS = /^([a-z0-9-]+\.googlevideo\.com|[a-z0-9-]+\.ytimg\.com)$/;
 
 const MIME: Record<string, string> = {
   mp4: "video/mp4",
@@ -17,15 +17,24 @@ const MIME: Record<string, string> = {
 function isAllowedUrl(raw: string): URL | null {
   try {
     const u = new URL(raw);
-    return ALLOWED_HOST.test(u.hostname) ? u : null;
+    return ALLOWED_HOSTS.test(u.hostname) ? u : null;
   } catch {
     return null;
   }
 }
 
+function sanitizeFilename(raw: string): string {
+  return raw
+    .replace(/[/\\?%*:|"<>]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200) || "video";
+}
+
 router.get("/proxy", (req: Request, res: Response) => {
   const rawUrl = typeof req.query.url === "string" ? req.query.url : "";
   const ext = typeof req.query.ext === "string" ? req.query.ext.replace(/[^a-z0-9]/gi, "") : "mp4";
+  const rawTitle = typeof req.query.title === "string" ? req.query.title : "";
 
   if (!rawUrl) {
     res.status(400).json({ error: "Missing url parameter." });
@@ -37,6 +46,10 @@ router.get("/proxy", (req: Request, res: Response) => {
     res.status(403).json({ error: "Host not permitted." });
     return;
   }
+
+  const filename = rawTitle
+    ? `${sanitizeFilename(rawTitle)}.${ext}`
+    : `stream.${ext}`;
 
   const lib = parsed.protocol === "https:" ? https : http;
 
@@ -59,7 +72,10 @@ router.get("/proxy", (req: Request, res: Response) => {
       "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Disposition", `inline; filename="stream.${ext}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Access-Control-Allow-Origin", "*");
 

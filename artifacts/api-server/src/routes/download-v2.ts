@@ -7,7 +7,7 @@ import { increment, recordSuccess, recordError } from "../lib/counter";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-import { fetchDownloadLinks, type QualityMap } from "../lib/downloader";
+import { fetchDownloadLinks, type QualityMap, type StreamInfo } from "../lib/downloader";
 import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
@@ -20,6 +20,8 @@ interface V2Payload {
     mp4: string | null;
     mp3: string | null;
     qualities: QualityMap;
+    preview_url: string | null;
+    streams: StreamInfo[];
     server: 1 | null;
   };
 }
@@ -69,6 +71,8 @@ async function fetchPayload(
       mp4: links?.mp4 ?? null,
       mp3: links?.mp3 ?? null,
       qualities: links?.qualities ?? {},
+      preview_url: links?.preview_url ?? null,
+      streams: links?.streams ?? [],
       server: links?.server ?? null,
     },
   };

@@ -6,9 +6,24 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
-    version: "1.3.1",
+    version: "1.3.2",
     date: "2026-06-17",
     tag: "current",
+    notes: [
+      "Merge: <strong>Global_TubeFetch_Server</strong> integrated — v1 response now includes <code>media.streams[]</code> (each stream with <code>quality</code>, <code>ext</code>, <code>has_video</code>, <code>has_audio</code>, <code>is_combined</code>, <code>url</code>)",
+      "Bug fix: downloads now save with the correct video title instead of generic <code>video.mp4</code> — the title is encoded into every proxy and merge URL and served via <code>Content-Disposition: attachment; filename=\"Title.mp4\"</code>",
+      "Bug fix: merge streams now declare the correct duration via <code>-t DURATION</code> in ffmpeg — progress bars no longer show <code>0/?</code> or fluctuate during playback",
+      "Bug fix: video preview falls back to a native HTML5 <code>&lt;video&gt;</code> player using the best combined proxy stream when a YouTube iframe cannot load — eliminates black-screen and infinite-loading issues",
+      "New: <code>media.preview_url</code> field in v1/v2 responses — the best combined (video+audio in one stream) proxy URL; suitable for direct use in an HTML5 <code>&lt;video&gt;</code> element without ffmpeg merging",
+      "New: <code>info.duration_seconds</code> (numeric) added to v1 response alongside <code>info.duration</code> (timestamp) — sourced from yt-dlp for higher accuracy",
+      "New: optional token authentication — set <code>API_TOKEN</code> environment variable to require <code>?token=</code> or <code>Authorization: Bearer</code> on all API routes; no env var = fully public (default, no breaking change)",
+      "Render.com: service renamed to <code>tubefetch-api</code>, <code>API_TOKEN</code> env var declared in <code>render.yaml</code>",
+    ],
+  },
+  {
+    version: "1.3.1",
+    date: "2026-06-17",
+    tag: "",
     notes: [
       "New downloader engine: <strong>yt-dlp</strong> (via <code>ytdlp-nodejs</code>) replaces btch-downloader — more reliable, no third-party relay, extracts streams directly from YouTube",
       "v1 &amp; v2 responses now include <code>media.qualities</code> — a map of all available quality options: <strong>1080p</strong>, <strong>720p</strong>, <strong>480p</strong>, <strong>360p</strong> (each with merged audio) and <strong>mp3</strong>",
@@ -2191,6 +2206,8 @@ var urlStore4a='';
 var urlStore4b='';
 var descExpanded=false;
 var v1VideoId='';
+var v1PreviewUrl='';
+var v1Title='';
 var ytPlayerInstance=null;
 var v2VideoId='';
 var v2YtPlayer=null;
@@ -2357,6 +2374,38 @@ function launchVideo(){
   var img=document.getElementById('r-thumb-img');
   if(img){ img.style.transition='opacity .5s ease'; img.style.opacity='0'; }
   var wrap=document.getElementById('r-yt-wrap'); wrap.style.display='block';
+  var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
+
+  if(v1PreviewUrl){
+    /* ── Native HTML5 player using combined proxy stream ─────────────────
+       This stream has a proper moov atom so the browser knows the duration,
+       the progress bar shows the full length immediately, and seeking works. */
+    if(pd){
+      var vid=document.createElement('video');
+      vid.id='r-native-video';
+      vid.style.cssText='width:100%;height:100%;background:#000;display:block;outline:none';
+      vid.controls=true;
+      vid.autoplay=true;
+      vid.setAttribute('playsinline','');
+      vid.setAttribute('preload','metadata');
+      var src=document.createElement('source');
+      src.src=v1PreviewUrl;
+      src.type='video/mp4';
+      vid.appendChild(src);
+      /* If native player fails, fall through to YouTube iframe */
+      vid.addEventListener('error',function(){
+        pd.innerHTML='';
+        _launchYtIframe();
+      },{once:true});
+      pd.appendChild(vid);
+      vid.play().catch(function(){ /* autoplay policy — controls still visible */ });
+    }
+  } else {
+    _launchYtIframe();
+  }
+}
+function _launchYtIframe(){
+  if(!v1VideoId)return;
   withYtApi(function(){
     if(ytPlayerInstance){ try{ ytPlayerInstance.destroy(); }catch(e){} ytPlayerInstance=null; }
     var pd=document.getElementById('r-yt-player'); if(pd) pd.innerHTML='';
@@ -2486,10 +2535,12 @@ async function fetchEp(n){
       var info=data.info||{};
       var media=data.media||{};
       v1VideoId=data.video_id||'';
+      v1PreviewUrl=(media.preview_url)||'';
+      v1Title=(info.title||data.video_id||'video');
       var thumbEl=document.getElementById('r-thumb-img');
       thumbEl.src=info.thumbnail||''; thumbEl.alt=info.title||'';
       thumbEl.style.opacity='1'; thumbEl.style.transition='opacity .55s ease';
-      sv('r-play-overlay',!!v1VideoId,'flex');
+      sv('r-play-overlay',!!(v1VideoId||v1PreviewUrl),'flex');
       var durEl=document.getElementById('r-dur');
       durEl.textContent=info.duration||'';
       durEl.style.display=info.duration?'inline-block':'none';
@@ -2516,8 +2567,9 @@ async function fetchEp(n){
       } else { descWrap.style.display='none'; }
       var dlEl=document.getElementById('r-dl');
       var dlHtml='';
-      if(media.mp4&&media.mp4.url) dlHtml+='<a class="dl-btn dl-mp4" href="'+esc(media.mp4.url)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
-      if(media.mp3&&media.mp3.url) dlHtml+='<a class="dl-btn dl-mp3" href="'+esc(media.mp3.url)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
+      var safeTitle=v1Title.replace(/"/g,'&quot;');
+      if(media.mp4&&media.mp4.url) dlHtml+='<a class="dl-btn dl-mp4" href="'+esc(media.mp4.url)+'" download="'+safeTitle+'.mp4">'+dlIcon()+' MP4 HD</a>';
+      if(media.mp3&&media.mp3.url) dlHtml+='<a class="dl-btn dl-mp3" href="'+esc(media.mp3.url)+'" download="'+safeTitle+'.mp3">'+dlIcon()+' MP3</a>';
       if(!dlHtml) dlHtml='<span class="dl-none">No download links available.</span>';
       dlEl.innerHTML=dlHtml;
       sv('rcard0',true,'block');
@@ -2538,8 +2590,9 @@ async function fetchEp(n){
       var titleEl=document.getElementById('v2-title-el');
       if(titleEl){ if(data.title){ titleEl.textContent=data.title; titleEl.style.display='block'; } else { titleEl.style.display='none'; } }
       var v2html='';
-      if(m.mp4) v2html+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP4 HD</a>';
-      if(m.mp3) v2html+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" target="_blank" rel="noopener noreferrer">'+dlIcon()+' MP3</a>';
+      var v2SafeTitle=(data.title||'video').replace(/"/g,'&quot;');
+      if(m.mp4) v2html+='<a class="dl-btn dl-mp4" href="'+esc(m.mp4)+'" download="'+v2SafeTitle+'.mp4">'+dlIcon()+' MP4 HD</a>';
+      if(m.mp3) v2html+='<a class="dl-btn dl-mp3" href="'+esc(m.mp3)+'" download="'+v2SafeTitle+'.mp3">'+dlIcon()+' MP3</a>';
       if(!v2html) v2html='<span class="dl-none">No download links.</span>';
       document.getElementById('v2-dl').innerHTML=v2html;
       sv('v2card',true,'block');

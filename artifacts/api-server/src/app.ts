@@ -9,6 +9,7 @@ import adminRouter from "./routes/admin";
 import adminApiRouter from "./routes/admin-api";
 import { logger } from "./lib/logger";
 import { globalApiRateLimit } from "./middleware/rate-limit";
+import { optionalTokenAuth } from "./middleware/token-auth";
 
 const app: Express = express();
 
@@ -123,9 +124,9 @@ app.use(adminRouter);
 app.use(adminApiRouter);
 app.use("/", homeRouter);
 
-// Apply the global rate limiter to all API routes before any handler runs.
-// This is the outermost abuse-prevention layer — it fires before any expensive
-// logic (DB reads, upstream calls, regex operations) can be triggered.
-app.use("/api", globalApiRateLimit, router);
+// Apply the global rate limiter and optional token auth to all API routes.
+// globalApiRateLimit fires first (cheap), then optionalTokenAuth (no-op when
+// API_TOKEN env var is unset), then the actual route handler.
+app.use("/api", globalApiRateLimit, optionalTokenAuth, router);
 
 export default app;

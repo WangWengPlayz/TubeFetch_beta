@@ -34,12 +34,26 @@ const QUALITIES = ["1080p", "720p", "480p", "360p"] as const;
 type QualityKey = (typeof QUALITIES)[number];
 export type QualityMap = Partial<Record<QualityKey | "mp3", string>>;
 
+export interface StreamInfo {
+  quality: string;
+  ext: string;
+  has_video: boolean;
+  has_audio: boolean;
+  is_combined: boolean;
+  url: string;
+}
+
 export interface DownloadLinks {
   mp4: string | null;
   mp3: string | null;
   thumbnail: string | null;
   title: string | null;
+  duration_seconds: number | null;
   qualities: QualityMap;
+  /** Preview-safe URL — a combined (video+audio) proxy stream, suitable for
+   *  an HTML5 <video> element. Null when no combined stream is available. */
+  preview_url: string | null;
+  streams: StreamInfo[];
   server: 1;
 }
 
@@ -64,12 +78,28 @@ const QUALITY_HEIGHTS: Record<QualityKey, number> = {
   "360p": 360,
 };
 
-function proxyUrl(baseUrl: string, rawUrl: string, ext: string): string {
-  return `${baseUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}&ext=${encodeURIComponent(ext)}`;
+function proxyUrl(
+  baseUrl: string,
+  rawUrl: string,
+  ext: string,
+  title: string | null,
+): string {
+  let u = `${baseUrl}/api/proxy?url=${encodeURIComponent(rawUrl)}&ext=${encodeURIComponent(ext)}`;
+  if (title) u += `&title=${encodeURIComponent(title)}`;
+  return u;
 }
 
-function mergeUrl(baseUrl: string, videoRaw: string, audioRaw: string): string {
-  return `${baseUrl}/api/merge?v=${encodeURIComponent(videoRaw)}&a=${encodeURIComponent(audioRaw)}`;
+function mergeUrl(
+  baseUrl: string,
+  videoRaw: string,
+  audioRaw: string,
+  title: string | null,
+  durationSeconds: number | null,
+): string {
+  let u = `${baseUrl}/api/merge?v=${encodeURIComponent(videoRaw)}&a=${encodeURIComponent(audioRaw)}`;
+  if (title) u += `&title=${encodeURIComponent(title)}`;
+  if (durationSeconds != null && durationSeconds > 0) u += `&dur=${Math.ceil(durationSeconds)}`;
+  return u;
 }
 
 export async function fetchDownloadLinks(
@@ -84,11 +114,14 @@ export async function fetchDownloadLinks(
       "ytdlp-getInfo",
     );
 
+    const title = metadata.title ?? null;
+    const durationSeconds = metadata.duration ?? null;
+
     const formats: YtFormat[] = (metadata.formats ?? []).filter(
       (f) => f.url && f.url.length > 0,
     );
 
-    // ── Best audio-only stream (m4a preferred, then highest-bitrate) ──────────
+    // ── Best audio-only stream (m4a preferred, then highest-bitrate) ─────────
     const audioOnly = formats.filter(
       (f) => f.acodec !== "none" && (f.vcodec === "none" || !f.vcodec),
     );
@@ -98,6 +131,8 @@ export async function fetchDownloadLinks(
       null;
 
     const qualities: QualityMap = {};
+    // Track which qualities are combined (proxy) vs merged (ffmpeg)
+    const combinedFlags: Partial<Record<QualityKey | "mp3", boolean>> = {};
 
     for (const qualityLabel of QUALITIES) {
       const targetHeight = QUALITY_HEIGHTS[qualityLabel];
@@ -123,7 +158,9 @@ export async function fetchDownloadLinks(
           baseUrl,
           combined.url,
           combined.ext ?? "mp4",
+          title,
         );
+        combinedFlags[qualityLabel] = true;
         continue;
       }
 
@@ -144,16 +181,24 @@ export async function fetchDownloadLinks(
         );
 
       if (videoOnly?.url && bestAudio?.url) {
-        qualities[qualityLabel] = mergeUrl(baseUrl, videoOnly.url, bestAudio.url);
+        qualities[qualityLabel] = mergeUrl(
+          baseUrl,
+          videoOnly.url,
+          bestAudio.url,
+          title,
+          durationSeconds,
+        );
+        combinedFlags[qualityLabel] = false;
       }
     }
 
-    // ── MP3 — best audio only ─────────────────────────────────────────────────
+    // ── MP3 — best audio only ────────────────────────────────────────────────
     if (bestAudio?.url) {
-      qualities["mp3"] = proxyUrl(baseUrl, bestAudio.url, bestAudio.ext ?? "m4a");
+      qualities["mp3"] = proxyUrl(baseUrl, bestAudio.url, bestAudio.ext ?? "m4a", title);
+      combinedFlags["mp3"] = true;
     }
 
-    // ── Best mp4: highest available quality ───────────────────────────────────
+    // ── Best mp4: highest available quality ──────────────────────────────────
     const bestMp4 =
       qualities["1080p"] ??
       qualities["720p"] ??
@@ -162,12 +207,49 @@ export async function fetchDownloadLinks(
       null;
     const bestMp3 = qualities["mp3"] ?? null;
 
+    // ── Preview URL: best combined (proxy) stream for HTML5 <video> ──────────
+    // Prefer lower quality for faster preview loading
+    const previewUrl =
+      (combinedFlags["360p"] ? qualities["360p"] : null) ??
+      (combinedFlags["480p"] ? qualities["480p"] : null) ??
+      (combinedFlags["720p"] ? qualities["720p"] : null) ??
+      (combinedFlags["1080p"] ? qualities["1080p"] : null) ??
+      null;
+
+    // ── Streams array (inspired by Global_TubeFetch_Server) ──────────────────
+    const streams: StreamInfo[] = [];
+    for (const q of QUALITIES) {
+      if (qualities[q]) {
+        streams.push({
+          quality: q,
+          ext: "mp4",
+          has_video: true,
+          has_audio: combinedFlags[q] ?? false,
+          is_combined: combinedFlags[q] ?? false,
+          url: qualities[q]!,
+        });
+      }
+    }
+    if (qualities["mp3"]) {
+      streams.push({
+        quality: "audio",
+        ext: bestAudio?.ext ?? "m4a",
+        has_video: false,
+        has_audio: true,
+        is_combined: true,
+        url: qualities["mp3"]!,
+      });
+    }
+
     return {
       mp4: bestMp4,
       mp3: bestMp3,
       thumbnail: metadata.thumbnail ?? null,
-      title: metadata.title ?? null,
+      title,
+      duration_seconds: durationSeconds,
       qualities,
+      preview_url: previewUrl,
+      streams,
       server: 1,
     };
   } catch {
@@ -176,7 +258,10 @@ export async function fetchDownloadLinks(
       mp3: null,
       thumbnail: null,
       title: null,
+      duration_seconds: null,
       qualities: {},
+      preview_url: null,
+      streams: [],
       server: 1,
     };
   }

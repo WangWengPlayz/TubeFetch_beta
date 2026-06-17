@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: youtube-dl-api
+    name: tubefetch-api
     runtime: node
     plan: free
     buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
@@ -14,4 +14,6 @@ services:
       - key: LOG_LEVEL
         value: info
       - key: MONGODB_URI
+        sync: false
+      - key: API_TOKEN
         sync: false
