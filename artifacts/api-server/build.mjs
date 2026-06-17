@@ -24,8 +24,7 @@ async function buildAll() {
     logLevel: "info",
     external: [
       "*.node",
-      "btch-downloader",
-      "nayan-media-downloaders",
+      "ytdlp-nodejs",
       "yt-search",
       "sharp",
       "better-sqlite3",

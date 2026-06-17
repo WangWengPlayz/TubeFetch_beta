@@ -7,7 +7,7 @@ import { increment, recordSuccess, recordError } from "../lib/counter";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-import { fetchDownloadLinks } from "../lib/downloader";
+import { fetchDownloadLinks, type QualityMap } from "../lib/downloader";
 import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
@@ -19,6 +19,7 @@ interface V2Payload {
   media: {
     mp4: string | null;
     mp3: string | null;
+    qualities: QualityMap;
     server: 1 | null;
   };
 }
@@ -50,21 +51,13 @@ function isUrl(input: string): boolean {
   return /^https?:\/\//i.test(input);
 }
 
-/**
- * Fetch title + download links for a video.
- *
- * knownTitle = string → keyword path: title already known; only fetches download links.
- * knownTitle = null   → URL path: fetches download links first (ytdl.getInfo already
- *                        returns the title as a free bonus). If the nayan fallback was
- *                        used instead (ytdl failed), links.title is null and we fall
- *                        back to a yts({ videoId }) call to recover the title.
- */
 async function fetchPayload(
   videoId: string,
   youtubeUrl: string,
   knownTitle: string | null,
+  baseUrl: string,
 ): Promise<V2Payload> {
-  const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
+  const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl, baseUrl));
 
   const title = knownTitle ?? links?.title ?? null;
 
@@ -75,6 +68,7 @@ async function fetchPayload(
     media: {
       mp4: links?.mp4 ?? null,
       mp3: links?.mp3 ?? null,
+      qualities: links?.qualities ?? {},
       server: links?.server ?? null,
     },
   };
@@ -83,7 +77,6 @@ async function fetchPayload(
 router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
 
-  // ── Admin: block during maintenance shutdown ──────────────────────────────
   if (isShutdown()) {
     emitAdminLog("warn", "[v2] Request blocked — server in shutdown mode");
     res.status(503).json({
@@ -93,7 +86,6 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     return;
   }
 
-  // ── Input validation (before ApiCount — bad input is not a real request) ──
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
     res.status(400).json({
@@ -108,7 +100,6 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   const input = validation.value;
 
-  // ── Reject non-YouTube URLs before ApiCount (not counted, not an error) ──
   if (isUrl(input) && !extractVideoId(input)) {
     res.status(400).json({
       credit: "MJL",
@@ -125,7 +116,6 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     return;
   }
 
-  // ── Count only real, processable requests ─────────────────────────────────
   const ApiCount = increment();
   recordApiCall();
   emitAdminLog("info", `[v2] ${input.slice(0, 80)}`);
@@ -133,6 +123,8 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
   });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
 
   try {
     let videoId: string | null = null;
@@ -184,7 +176,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
       } satisfies V2Response);
       if (hit.stale) {
         setImmediate(() => {
-          dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null))
+          dedup(`swr-v2:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null, baseUrl))
             .then(payload => cache.set(videoId!, payload))
             .catch(() => {});
         });
@@ -194,7 +186,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
 
     const payload = await dedup(
       `fetch-v2:${videoId}`,
-      () => fetchPayload(videoId!, youtubeUrl, knownTitle),
+      () => fetchPayload(videoId!, youtubeUrl, knownTitle, baseUrl),
     );
     cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");

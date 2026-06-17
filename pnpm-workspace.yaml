@@ -33,6 +33,7 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  - ytdlp-nodejs
 
 packages:
   - artifacts/*
@@ -73,6 +74,7 @@ onlyBuiltDependencies:
   - esbuild
   - msw
   - unrs-resolver
+  - ytdlp-nodejs
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms

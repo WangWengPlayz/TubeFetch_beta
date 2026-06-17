@@ -6,9 +6,23 @@ const router: IRouter = Router();
 
 const CHANGELOG: { version: string; date: string; tag: string; notes: string[] }[] = [
   {
+    version: "1.3.1",
+    date: "2026-06-17",
+    tag: "current",
+    notes: [
+      "New downloader engine: <strong>yt-dlp</strong> (via <code>ytdlp-nodejs</code>) replaces btch-downloader — more reliable, no third-party relay, extracts streams directly from YouTube",
+      "v1 &amp; v2 responses now include <code>media.qualities</code> — a map of all available quality options: <strong>1080p</strong>, <strong>720p</strong>, <strong>480p</strong>, <strong>360p</strong> (each with merged audio) and <strong>mp3</strong>",
+      "All lower qualities (720p, 480p, 360p) now include audio — combined progressive streams are used where available; video-only streams are merged with the best audio track on the fly via ffmpeg",
+      "New <code>/api/proxy</code> endpoint — proxies YouTube CDN stream URLs through TubeFetch with the correct <code>Referer</code> and <code>Origin</code> headers, eliminating 403 errors when playing media directly",
+      "New <code>/api/merge</code> endpoint — real-time ffmpeg muxer that merges a video-only stream and an audio-only stream into a single MP4; used automatically for 1080p and any quality that lacks a combined stream",
+      "<code>media.mp4.quality</code> now reflects the actual resolved quality (e.g. <code>\"1080p\"</code>) instead of the generic <code>\"HD\"</code> label",
+      "<code>media.mp4</code> and <code>media.mp3</code> remain for backward compatibility — they point to the best available quality from the new quality map",
+    ],
+  },
+  {
     version: "1.3.0",
     date: "2026-06-08",
-    tag: "current-hotfix",
+    tag: "",
     notes: [
       "New secured <code>/admin</code> route — administrative console for monitoring and controlling the API server",
       "Real-time dashboard via SSE: live API stats (total calls, success, errors, uptime), Chart.js visualisations (success/error doughnut + calls-per-minute line chart), and package status for both download servers",

@@ -1,1 +1,2 @@
 - [Admin panel architecture](admin-panel.md) — v1.3.0 admin at /admin; SSE events, 2FA auth, shutdown control; static import in counter.ts is required (no require() in ESM bundle)
+- [yt-dlp standalone binary](ytdlp-binary.md) — ytdlp-nodejs downloads a Python-based yt-dlp that fails without Python 3; use the standalone binary instead.

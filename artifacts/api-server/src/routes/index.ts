@@ -5,12 +5,16 @@ import downloadRouter from "./download";
 import downloadV2Router from "./download-v2";
 import downloadV3Router from "./download-v3";
 import statsRouter from "./stats";
+import proxyRouter from "./proxy";
+import mergeRouter from "./merge";
 import homeRouter from "./home";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(uptimeRouter);
+router.use(proxyRouter);
+router.use(mergeRouter);
 router.use(downloadRouter);
 router.use(downloadV2Router);
 router.use(downloadV3Router);

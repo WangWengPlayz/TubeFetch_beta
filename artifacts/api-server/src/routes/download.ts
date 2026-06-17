@@ -8,7 +8,7 @@ import { inferCategory } from "../lib/category";
 import { dedup, withTimeout } from "../lib/dedup";
 import { validateQuery, sanitizeError } from "../lib/validate";
 import { downloadRateLimit } from "../middleware/rate-limit";
-import { fetchDownloadLinks } from "../lib/downloader";
+import { fetchDownloadLinks, type QualityMap } from "../lib/downloader";
 import { isShutdown, emitAdminLog, recordApiCall, recordServerResult } from "../lib/admin-state";
 
 const router: IRouter = Router();
@@ -23,8 +23,9 @@ interface VideoPayload {
   category: string;
   info: Record<string, unknown>;
   media: {
-    mp4: { url: string; quality: "HD" } | null;
+    mp4: { url: string; quality: string } | null;
     mp3: { url: string } | null;
+    qualities: QualityMap;
     server: 1 | null;
   };
 }
@@ -83,33 +84,35 @@ function resolveThumbnail(
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
+function bestQualityLabel(qualities: QualityMap, mp4Url: string | null): string {
+  if (!mp4Url) return "HD";
+  const order = ["1080p", "720p", "480p", "360p"] as const;
+  return order.find((q) => qualities[q] === mp4Url) ?? "HD";
+}
+
 /**
  * Fetch and assemble the full video payload.
  *
  * @param preInfo - Pre-loaded yts.VideoResult from a keyword search.
- *   When provided, the redundant second yts({ videoId }) lookup is skipped
- *   and only the download fetch runs — saving a full network round-trip.
- *   Pass null for URL-based requests to run yts + download in parallel.
+ * @param baseUrl - Server base URL used to build proxy/merge links.
  */
 async function fetchPayload(
   videoId: string,
   youtubeUrl: string,
   preInfo: yts.VideoResult | null = null,
+  baseUrl: string,
 ): Promise<VideoPayload> {
   let info: yts.VideoResult | null = preInfo;
   let links: Awaited<ReturnType<typeof fetchDownloadLinks>> | null = null;
 
   if (info) {
-    // Keyword path — metadata already in hand from the search result.
-    // Only fetch download links (no second yts call needed).
-    links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
+    links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl, baseUrl));
   } else {
-    // URL path — run metadata lookup and download fetch in parallel.
     const [infoResult, dlResult] = await Promise.allSettled([
       dedup(`yts-vid:${videoId}`, () =>
         withTimeout(yts({ videoId }), 15_000, "yt-search-id"),
       ),
-      dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl)),
+      dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl, baseUrl)),
     ]);
     info = infoResult.status === "fulfilled"
       ? (infoResult.value as unknown as yts.VideoResult)
@@ -141,6 +144,8 @@ async function fetchPayload(
 
   const mp4Url = links?.mp4 ?? null;
   const mp3Url = links?.mp3 ?? null;
+  const qualities = links?.qualities ?? {};
+  const quality = bestQualityLabel(qualities, mp4Url);
 
   return {
     version: VERSION,
@@ -152,8 +157,9 @@ async function fetchPayload(
     category,
     info: clean(rawInfo),
     media: {
-      mp4: mp4Url ? { url: mp4Url, quality: "HD" } : null,
+      mp4: mp4Url ? { url: mp4Url, quality } : null,
       mp3: mp3Url ? { url: mp3Url } : null,
+      qualities,
       server: links?.server ?? null,
     },
   };
@@ -162,7 +168,6 @@ async function fetchPayload(
 router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
   const t0 = Date.now();
 
-  // ── Admin: block during maintenance shutdown ──────────────────────────────
   if (isShutdown()) {
     emitAdminLog("warn", "[v1] Request blocked — server in shutdown mode");
     res.status(503).json({
@@ -172,7 +177,6 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     return;
   }
 
-  // ── Input validation (before ApiCount — bad input is not a real request) ──
   const validation = validateQuery(req.query[""]);
   if (!validation.ok) {
     res.status(400).json({
@@ -193,7 +197,6 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
 
   const input = validation.value;
 
-  // ── Reject non-YouTube URLs before ApiCount (not counted, not an error) ──
   if (isUrl(input) && !extractVideoId(input)) {
     res.status(400).json({
       version: VERSION,
@@ -211,7 +214,6 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     return;
   }
 
-  // ── Count only real, processable requests ─────────────────────────────────
   const ApiCount = increment();
   recordApiCall();
   emitAdminLog("info", `[v1] ${input.slice(0, 80)}`);
@@ -219,6 +221,8 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     if (res.statusCode >= 200 && res.statusCode < 400) recordSuccess();
     else recordError();
   });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
 
   try {
     let videoId: string | null = null;
@@ -228,13 +232,11 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     if (isUrl(input)) {
       videoId = extractVideoId(input);
       youtubeUrl = `https://www.youtube.com/watch?v=${videoId!}`;
-      // preInfo stays null — fetchPayload runs yts + download in parallel.
     } else {
       const known = queryToId.get(input);
       if (known) {
         videoId = known;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-        // preInfo stays null — metadata comes from cache or parallel fetch.
       } else {
         const searchResult = await dedup(
           `yts:${input}`,
@@ -255,7 +257,6 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
         videoId = first.videoId;
         youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
         queryToId.set(input, videoId);
-        // Pass the search result directly — avoids a redundant yts({ videoId }) call.
         preInfo = first;
       }
     }
@@ -266,7 +267,7 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
       res.json({ ...hit.value, ApiCount, cached: true, ms: Date.now() - t0 } satisfies VideoResponse);
       if (hit.stale) {
         setImmediate(() => {
-          dedup(`swr:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null))
+          dedup(`swr:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, null, baseUrl))
             .then(payload => cache.set(videoId!, payload))
             .catch(() => {});
         });
@@ -274,7 +275,7 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
       return;
     }
 
-    const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, preInfo));
+    const payload = await dedup(`fetch:${videoId}`, () => fetchPayload(videoId!, youtubeUrl, preInfo, baseUrl));
     cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");
     const srv = payload.media.server;

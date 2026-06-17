@@ -2,7 +2,7 @@
 
 REST API that accepts a YouTube URL **or a plain title/keyword** and returns direct MP4 and MP3 download links, metadata, and top search results.
 
-## Current Version: 1.2.8
+## Current Version: 1.3.1
 
 ## Stack
 
@@ -10,8 +10,7 @@ REST API that accepts a YouTube URL **or a plain title/keyword** and returns dir
 - **Node.js**: 24
 - **Framework**: Express 5
 - **Search**: `yt-search` — resolves title queries to YouTube video IDs and metadata
-- **Downloads (Server 1)**: `btch-downloader` — primary MP4/MP3 source
-- **Downloads (Server 2)**: `nayan-media-downloaders` — automatic fallback when Server 1 fails
+- **Downloads**: `ytdlp-nodejs` + standalone `yt-dlp` binary (`artifacts/api-server/bin/yt-dlp`) — extracts streams directly from YouTube; no third-party relay
 - **Logging**: pino + pino-http (pretty in dev, JSON in production)
 - **Build**: esbuild (via `build.mjs`)
 - **TypeScript**: 5.9, strict
@@ -33,13 +32,19 @@ REST API that accepts a YouTube URL **or a plain title/keyword** and returns dir
 ## API Endpoints
 
 ### `GET /api/v1/q?=(url or title)`
-Full metadata + download links. Response includes `video_id`, `url`, `short_url`, `category`, `info` (title, author, channel_url, thumbnail, duration, views, likes, published, description, keywords), `media.mp4`, `media.mp3`, `ApiCount`, `cached`, `ms`.
+Full metadata + download links. Response includes `video_id`, `url`, `short_url`, `category`, `info` (title, author, channel_url, thumbnail, duration, views, likes, published, description, keywords), `media.mp4`, `media.mp3`, `media.qualities` (1080p/720p/480p/360p/mp3), `media.server`, `ApiCount`, `cached`, `ms`.
 
 ### `GET /api/v2/q?=(url or title)`
-Fast metadata + links endpoint. Returns `video_id`, `video_url`, `short_url`, `title`, `channel_name`, `channel_url`, `thumbnail`, `duration`, `duration_seconds`, `views`, `published`, `category`, `media.mp4`, `media.mp3`, `ApiCount`, `cached`, `ms`. URL requests fetch metadata and download links in parallel.
+Fast metadata + links endpoint. Returns `title`, `media.mp4`, `media.mp3`, `media.qualities` (1080p/720p/480p/360p/mp3), `media.server`, `ApiCount`, `cached`, `ms`.
 
 ### `GET /api/v3/q?=(search query)`
 Returns top 10 YouTube search results. Each result includes: `rank`, `video_id`, `url`, `short_url`, `title`, `description`, `channel_name`, `channel_url`, `published`, `duration`, `duration_seconds`, `thumbnail`, `views`, `keywords`, `category`. Response includes `ApiCount`, `cached`, `ms`.
+
+### `GET /api/proxy?url=&ext=`
+Proxies a YouTube CDN stream URL through the server with correct `Referer`/`Origin` headers, fixing 403 errors. Only accepts `*.googlevideo.com` or `*.ytimg.com` hosts. Supports `Range` header pass-through.
+
+### `GET /api/merge?v=&a=`
+Real-time ffmpeg muxer: merges a video-only stream URL and an audio-only stream URL into a single MP4 piped to the client. Used automatically when a combined stream isn't available.
 
 ### `GET /api/stats`
 Returns total API call count: `{ version, creditTo, ApiCount, timestamp }`. Does NOT increment the counter.
