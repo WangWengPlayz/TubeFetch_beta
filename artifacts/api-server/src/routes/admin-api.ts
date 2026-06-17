@@ -103,7 +103,6 @@ router.get("/admin/api/stats", async (req: Request, res: Response) => {
     minuteBuckets: getMinuteBuckets(),
     packages: {
       server1: getServerStatus(1),
-      server2: getServerStatus(2),
     },
   });
 });
@@ -140,7 +139,6 @@ router.get("/admin/api/events", async (req: Request, res: Response) => {
       minuteBuckets: getMinuteBuckets(),
       packages: {
         server1: getServerStatus(1),
-        server2: getServerStatus(2),
       },
     });
   }

@@ -25,7 +25,7 @@ interface VideoPayload {
   media: {
     mp4: { url: string; quality: "HD" } | null;
     mp3: { url: string } | null;
-    server: 1 | 2 | null;
+    server: 1 | null;
   };
 }
 
@@ -278,7 +278,7 @@ router.get("/v1/q", downloadRateLimit, async (req: Request, res: Response) => {
     cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");
     const srv = payload.media.server;
-    if (srv === 1 || srv === 2) recordServerResult(srv, !!(payload.media.mp4 || payload.media.mp3));
+    if (srv === 1) recordServerResult(srv, !!(payload.media.mp4 || payload.media.mp3));
     emitAdminLog("success", `[v1] ✓ ${videoId} server:${srv ?? "?"} ${Date.now()-t0}ms`);
     res.json({ ...payload, ApiCount, cached: false, ms: Date.now() - t0 } satisfies VideoResponse);
   } catch (err: unknown) {

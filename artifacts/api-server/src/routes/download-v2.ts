@@ -19,7 +19,7 @@ interface V2Payload {
   media: {
     mp4: string | null;
     mp3: string | null;
-    server: 1 | 2 | null;
+    server: 1 | null;
   };
 }
 
@@ -66,20 +66,7 @@ async function fetchPayload(
 ): Promise<V2Payload> {
   const links = await dedup(`dl:${videoId}`, () => fetchDownloadLinks(youtubeUrl));
 
-  let title = knownTitle ?? links?.title ?? null;
-
-  // Title fallback via yts({ videoId }) is ONLY used when Server 2 (nayan) ran.
-  // btch (Server 1) already returns the title in its response — no extra call needed.
-  // nayan does not return a title, so a separate lookup is needed for that path.
-  if (!title && links?.server === 2) {
-    try {
-      const info = await dedup(`yts-id:${videoId}`, () =>
-        withTimeout(yts({ videoId }), 12_000, "yt-search-id"),
-      );
-      title = (info as unknown as { title?: string }).title ?? null;
-      if (title) videoIdToTitle.set(videoId, title);
-    } catch { /* best-effort */ }
-  }
+  const title = knownTitle ?? links?.title ?? null;
 
   return {
     credit: "MJL",
@@ -212,7 +199,7 @@ router.get("/v2/q", downloadRateLimit, async (req: Request, res: Response) => {
     cache.set(videoId!, payload);
     res.setHeader("Cache-Control", "private, no-store");
     const srv2 = payload.media.server;
-    if (srv2 === 1 || srv2 === 2) recordServerResult(srv2, !!(payload.media.mp4 || payload.media.mp3));
+    if (srv2 === 1) recordServerResult(srv2, !!(payload.media.mp4 || payload.media.mp3));
     emitAdminLog("success", `[v2] ✓ ${videoId} server:${srv2 ?? "?"} ${Date.now()-t0}ms`);
     res.json({
       ...payload,
